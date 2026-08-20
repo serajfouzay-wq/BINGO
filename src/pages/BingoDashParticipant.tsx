@@ -13,7 +13,6 @@ import { SwipeablePages } from '../components/SwipeablePages'
 import { ParticleBackground } from '../components/ParticleBackground'
 import { TimeUpAlarm } from '../components/TimeUpAlarm'
 import { ContestCard } from '../components/ContestCard'
-import { AitbCardBrief } from '../components/AitbCardBrief'
 import { normalizeUrl } from '../lib/normalizeUrl'
 import type { BingoScan, BingoTask } from '../types/database'
 
@@ -84,11 +83,6 @@ export function BingoDashParticipant() {
   const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
   const [leaving, setLeaving] = useState(false)
   // Snake & Ladder mode: team picker state
-  const [snakeTeams, setSnakeTeams] = useState<SnakeTeam[]>([])
-  const [snakeSnakes, setSnakeSnakes] = useState<Record<string, number>>({})
-  const [snakeLadders, setSnakeLadders] = useState<Record<string, number>>({})
-  const [snakeResult, setSnakeResult] = useState<{ team: SnakeTeam; landed: number; jump: 'snake' | 'ladder' | null; to: number; newPoints: number } | null>(null)
-  const [snakeMoving, setSnakeMoving] = useState(false)
   // Marshal password state
   const [marshalPassword, setMarshalPassword] = useState('')
   const [marshalInput, setMarshalInput] = useState('')
@@ -176,20 +170,16 @@ export function BingoDashParticipant() {
   // An imported AITB activity gets its own mission brief (hero, steps, props,
   // interactive draw, tool buttons) instead of the generic instruction pages.
   // Completion is unchanged: marshal password → toggleComplete → scoreboard.
-  // AI Team Building card types removed — bingo-only build.
-  const aitbActivity: { emoji?: string; act?: number; mins?: number; tagline?: string } | null = null
+  // AITB card types removed — bingo-only build.
+  // AITB card types removed — bingo-only build. Typed loose so the
+  // remaining `aitbActivity && ...` branches compile and never render.
+  const aitbActivity = null as { emoji?: string; act?: number; mins?: number; tagline?: string } | null
 
   // The draw / typed words belong to the TEAM, not the phone that made them —
   // a roulette spin on one handset has to reach the teammate holding the other.
   // Writes BEFORE touching local state on purpose: the spin/deal modules call
   // this from inside a setState updater, so a synchronous setScanRecord here
   // would be a render-phase update of this page from inside the module.
-  const saveAitbWords = useCallback(async (words: string[]) => {
-    if (!scanRecord) return
-    const { error } = await supabase.from('bingo_scans').update({ words }).eq('id', scanRecord.id)
-    if (error) { console.warn('Could not save AITB result:', error.message); return }
-    setScanRecord(prev => (prev ? { ...prev, words } : prev))
-  }, [scanRecord])
 
   // Pull a teammate's draw in live. Only mounted for AITB cards — every other
   // card type has nothing on the row that can change from another phone.
@@ -392,6 +382,190 @@ export function BingoDashParticipant() {
           {aitbActivity && (
             <p className="text-lg opacity-90 font-bold mb-3 leading-snug">{aitbActivity.tagline}</p>
           )}
+          {isSnakeLadder ? (
+            snakeTile != null && (
+              <p className="text-lg opacity-80 font-medium mb-2">Tile {snakeTile}</p>
+            )
+          ) : (
+            <p className="text-lg opacity-80 font-medium mb-2">Team: {team?.name}</p>
+          )}
+        </div>
+
+        <button
+          className="relative z-10 mt-8 px-10 py-4 bg-white/20 backdrop-blur-sm rounded-2xl text-xl font-black uppercase tracking-wider border-2 border-white/30 hover:bg-white/30 active:scale-95 transition-all animate-slide-up"
+          style={{ animationDelay: '0.4s' }}
+          onClick={(e) => { e.stopPropagation(); setShowSplash(false) }}
+        >
+          Start Challenge
+        </button>
+        <p className="relative z-10 mt-4 text-sm opacity-50 animate-pulse">Tap anywhere to begin</p>
+      </div>
+      {timeUpOverlay}
+      </>
+    )
+  }
+
+  // ── Main view ────────────────────────────────────────────────────────
+  return (
+    <>
+    <div
+      className="min-h-screen relative overflow-x-hidden"
+      style={{ backgroundColor: `color-mix(in srgb, ${task.hex_code} 50%, #0a0a0a)` }}
+    >
+      <ParticleBackground hexCode={task.hex_code} />
+
+      {/* Header */}
+      <header className="px-6 py-5 text-white relative z-10 overflow-hidden">
+        <div className="absolute inset-0" style={{ backgroundColor: task.hex_code, opacity: 0.35 }} />
+        <div className="absolute inset-0 bg-black/30" />
+        <div className="max-w-lg mx-auto relative z-10 flex items-start justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <button
+              onClick={() => navigate(backPath)}
+              className="mt-1 flex-shrink-0 flex items-center gap-1 px-2.5 py-1.5 bg-white/15 hover:bg-white/25 rounded-lg text-white/80 hover:text-white text-xs font-bold transition-colors"
+            >
+              ← Board
+            </button>
+            <div>
+              <p className="text-sm font-bold opacity-80 uppercase tracking-wider">
+                {isSnakeLadder
+                  ? (snakeTile != null ? `🐍🪜 Tile ${snakeTile}` : '🐍🪜 Snake & Ladder')
+                  : `Team: ${team?.name}`}
+              </p>
+              <h1 className="text-3xl font-black tracking-tight">{task.title}</h1>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="text-sm opacity-70 uppercase tracking-wider">{task.color} Challenge</span>
+                {(task.points ?? 0) > 0 && (
+                  <span className="px-2 py-0.5 rounded-full text-xs font-black bg-white/20 text-white">
+                    {task.points} pts
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+          {!isSnakeLadder && (
+            <div className="flex-shrink-0 mt-1">
+              {!showLeaveConfirm ? (
+                <button
+                  onClick={() => setShowLeaveConfirm(true)}
+                  className="text-xs text-white/40 hover:text-white/70 transition-colors"
+                >
+                  Leave
+                </button>
+              ) : (
+                <div className="flex flex-col items-end gap-1">
+                  <p className="text-xs text-white/60">Leave team?</p>
+                  <div className="flex gap-3">
+                    <button onClick={() => setShowLeaveConfirm(false)} className="text-xs text-white/40 hover:text-white/70 transition-colors">Cancel</button>
+                    <button
+                      onClick={handleLeave}
+                      disabled={leaving}
+                      className="text-xs text-red-400 hover:text-red-300 font-bold transition-colors disabled:opacity-50"
+                    >
+                      {leaving ? '...' : 'Yes, leave'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </header>
+
+      <main className="max-w-lg mx-auto px-6 py-8 relative z-10">
+        {/* Photo carousel */}
+        {photos.length > 0 && (
+          <div className="rounded-2xl overflow-hidden mb-6 shadow-xl animate-slide-up">
+            <div className="relative">
+              <img
+                src={photos[carouselIdx]?.photo_url}
+                alt={`${task.title} ${carouselIdx + 1}`}
+                className="w-full max-h-72 object-cover"
+                style={{ objectPosition: `${photos[carouselIdx]?.position_x ?? 50}% ${photos[carouselIdx]?.position_y ?? 50}%` }}
+              />
+              {photos.length > 1 && (
+                <>
+                  <button
+                    onClick={() => setCarouselIdx(i => (i - 1 + photos.length) % photos.length)}
+                    className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/50 text-white flex items-center justify-center text-lg font-bold backdrop-blur-sm active:scale-90 transition-transform"
+                  >‹</button>
+                  <button
+                    onClick={() => setCarouselIdx(i => (i + 1) % photos.length)}
+                    className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full bg-black/50 text-white flex items-center justify-center text-lg font-bold backdrop-blur-sm active:scale-90 transition-transform"
+                  >›</button>
+                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex gap-1.5">
+                    {photos.map((_, i) => (
+                      <button
+                        key={i}
+                        onClick={() => setCarouselIdx(i)}
+                        className={`w-2 h-2 rounded-full transition-all ${i === carouselIdx ? 'bg-white scale-125' : 'bg-white/50'}`}
+                      />
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+            {photos[carouselIdx]?.caption && (
+              <div className="px-4 py-2 text-xs text-white/70 font-medium" style={{ backgroundColor: `${task.hex_code}cc` }}>
+                {photos[carouselIdx].caption}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Maps button */}
+        {task.maps_url && (
+          <div className="mb-5 animate-slide-up">
+            <a
+              href={normalizeUrl(task.maps_url)}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 w-full py-3 rounded-2xl font-black text-sm text-white border-2 border-white/30 bg-white/10 hover:bg-white/20 active:scale-95 transition-all"
+            >
+              📍 {task.maps_label?.trim() || 'Open in Maps'}
+            </a>
+          </div>
+        )}
+
+        {/* AI Team Building brief — replaces the generic pages, which for these
+            cards only hold a copy of the same steps. */}
+        {pages.length > 0 ? (
+          <SwipeablePages
+            currentPage={currentPage}
+            total={pages.length}
+            onChange={setCurrentPage}
+          >
+            <InstructionPage page={pages[currentPage]} hexCode={task.hex_code} />
+            <PageNavigator
+              current={currentPage}
+              total={pages.length}
+              onPrev={() => setCurrentPage((p) => Math.max(0, p - 1))}
+              onNext={() => setCurrentPage((p) => Math.min(pages.length - 1, p + 1))}
+              hexCode={task.hex_code}
+            />
+          </SwipeablePages>
+        ) : (
+          <div className="text-center py-12 text-gray-400">
+            No instructions available for this challenge yet.
+          </div>
+        )}
+
+        {/* Helpful links */}
+        {links.length > 0 && (
+          <div className="mt-8 animate-slide-up">
+            <TaskLinkButtons links={links} hexCode={task.hex_code} heading="Use these links to complete your tasks" />
+          </div>
+        )}
+
+        {/* Observer notice */}
+        {isObserver && (
+          <div className="mt-8 p-4 rounded-2xl border-2 border-blue-400/40 bg-blue-400/10 text-center">
+            <p className="text-blue-300 font-black text-sm">👁 Observer Mode — viewing only</p>
+          </div>
+        )}
+
+        {/* Complete Activity */}
+        {!isObserver && <div className="mt-8 animate-slide-up">
           {task.is_contest && team && sectionId ? (
             /* ── Contest card: the whole duel flow replaces solo completion ──
                ContestCard owns every state (challenge → live → result), and the

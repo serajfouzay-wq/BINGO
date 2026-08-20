@@ -481,7 +481,7 @@ export function BingoDashAdmin() {
   const [categories, setCategories] = useState<BingoCategory[]>([])
   const [challengeSections, setChallengeSections] = useState<BingoChallengeSection[]>([])
   const [duels, setDuels] = useState<BingoDuel[]>([])
-  const [aitbImporting, setAitbImporting] = useState(false)
+  
   // Remembered board is namespaced per signed-in account so switching accounts
   // on the same browser never inherits someone else's stale board id.
   const sectionStorageKey = `${ADMIN_SECTION_KEY}:${uid ?? 'anon'}`
@@ -2662,14 +2662,6 @@ export function BingoDashAdmin() {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-bold text-white">Card Library</h2>
             <div className="flex items-center gap-2">
-              <button
-                onClick={runAitbImport}
-                disabled={aitbImporting || !currentSectionId}
-                title="Adds the 10 AI Team Building activities to this board's library under Special → AI Team Building. Safe to press twice."
-                className="px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-violet-500/60 text-violet-300 hover:bg-violet-500/15 disabled:opacity-40"
-              >
-                {aitbImporting ? 'Importing…' : '✨ Import AI Team Building'}
-              </button>
               <button onClick={() => setShowForm(!showForm)}
                 className="px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 text-sm font-medium transition-colors">
                 + Add Challenge
