@@ -65,8 +65,7 @@ export function ContestCard({ task, team, sectionId, marshalPassword }: Props) {
         duel={myDuelForThisCard}
         myTeamId={team.id}
         sectionId={sectionId}
-        marshalPassword={marshalPassword}
-        onResolve={(winner) => duels.resolve(myDuelForThisCard, winner)}
+        onResolve={(winner, code) => duels.resolve(myDuelForThisCard, winner, code)}
         onCancel={() => duels.cancel(myDuelForThisCard.id)}
       />
     )
@@ -177,13 +176,12 @@ export function ContestCard({ task, team, sectionId, marshalPassword }: Props) {
 // ── Live duel — identical on both phones ─────────────────────────────────────
 
 function LiveDuel({
-  duel, myTeamId, sectionId, marshalPassword, onResolve, onCancel,
+  duel, myTeamId, sectionId, onResolve, onCancel,
 }: {
   duel: BingoDuel
   myTeamId: string
   sectionId: string
-  marshalPassword: string
-  onResolve: (winnerTeamId: string) => Promise<{ error?: string }>
+  onResolve: (winnerTeamId: string, code: string) => Promise<{ error?: string }>
   onCancel: () => void
 }) {
   const game = getContestGame(duel.game_key)
@@ -201,9 +199,10 @@ function LiveDuel({
   const iAmChallenger = duel.challenger_team_id === myTeamId
 
   const declare = async (winnerTeamId: string) => {
-    if (pw.trim() !== marshalPassword) { setErr('Wrong marshal password.'); return }
+    // The code is validated server-side by resolve_duel(). No client-side
+    // password compare — the old one shipped the real password to every phone.
     setDeclaring(true)
-    const { error } = await onResolve(winnerTeamId)
+    const { error } = await onResolve(winnerTeamId, pw)
     setDeclaring(false)
     if (error) setErr(error)
   }
@@ -254,13 +253,13 @@ function LiveDuel({
         <div className="mt-5 pt-4 border-t border-white/10">
           <div className="flex items-center gap-2 mb-3">
             <span className="text-xl">👮</span>
-            <p className="text-white font-black text-sm uppercase tracking-wide">Marshal declares the winner</p>
+            <p className="text-white font-black text-sm uppercase tracking-wide">Referee code to declare a winner</p>
           </div>
           <input
-            type="password"
+            type="text"
             value={pw}
             onChange={e => { setPw(e.target.value); setErr('') }}
-            placeholder="Marshal password..."
+            placeholder="Referee code..."
             className="w-full px-4 py-3 rounded-2xl border-2 border-white/20 bg-white/10 text-white text-center font-bold placeholder-white/30 focus:outline-none focus:border-white/50"
           />
           <div className="grid grid-cols-2 gap-2 mt-3">

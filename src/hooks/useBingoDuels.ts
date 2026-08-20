@@ -142,28 +142,24 @@ export function useBingoDuels(teamId: string | null, sectionId: string | null) {
    *     lives on the duel row so a winning defender can score without their own
    *     board being touched.
    */
-  const resolve = useCallback(async (duel: BingoDuel, winnerTeamId: string) => {
-    const { error } = await supabase.from('bingo_duels')
-      .update({ status: 'done', winner_team_id: winnerTeamId, resolved_at: new Date().toISOString() })
-      .eq('id', duel.id).eq('status', 'active')
-    if (error) return { error: error.message }
-
-    // Cross the challenger's tile off. upsert-by-hand: the scan row already
-    // exists if they opened the tile before challenging.
-    const { data: existing } = await supabase
-      .from('bingo_scans').select('id')
-      .eq('team_id', duel.challenger_team_id).eq('task_id', duel.task_id)
-      .maybeSingle()
-
-    const crossOff = { completed: true, completed_at: new Date().toISOString() }
-    if (existing) {
-      await supabase.from('bingo_scans').update(crossOff).eq('id', existing.id)
-    } else {
-      await supabase.from('bingo_scans').insert({
-        team_id: duel.challenger_team_id, task_id: duel.task_id, ...crossOff,
-      })
+  /**
+   * Marshal declares the winner. Resolution is server-side only:
+   * resolve_duel() validates the per-duel referee code, crosses off the
+   * challenger's tile, awards the sticker to the challenger and the bonus
+   * to the winner, then burns the code. Players can no longer write the
+   * winner directly — the anon UPDATE policy forbids it.
+   */
+  const resolve = useCallback(async (duel: BingoDuel, winnerTeamId: string, code: string) => {
+    const { error } = await supabase.rpc('resolve_duel', {
+      p_duel: duel.id, p_code: code, p_winner: winnerTeamId,
+    })
+    if (error) {
+      const m = error.message || ''
+      if (m.includes('BAD_CODE'))        return { error: 'Wrong referee code.' }
+      if (m.includes('NO_CODE_ISSUED'))  return { error: 'No code issued yet — ask the marshal.' }
+      if (m.includes('DUEL_NOT_ACTIVE')) return { error: 'This duel is no longer active.' }
+      return { error: m }
     }
-
     await fetchDuels()
     return {}
   }, [fetchDuels])
