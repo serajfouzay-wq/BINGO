@@ -1,0 +1,699 @@
+import { useEffect, useState, useRef, useCallback } from 'react'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { supabase } from '../lib/supabase'
+import { useBingoDashTeam } from '../hooks/useBingoDashTeam'
+import { useBingoTaskPages } from '../hooks/useBingoTaskPages'
+import { useBingoTaskPhotos } from '../hooks/useBingoTaskPhotos'
+import { useBingoScans } from '../hooks/useBingoScans'
+import { useTaskLinks } from '../hooks/useTaskLinks'
+import { TaskLinkButtons } from '../components/TaskLinkButtons'
+import { InstructionPage } from '../components/InstructionPage'
+import { PageNavigator } from '../components/PageNavigator'
+import { SwipeablePages } from '../components/SwipeablePages'
+import { ParticleBackground } from '../components/ParticleBackground'
+import { TimeUpAlarm } from '../components/TimeUpAlarm'
+import { ContestCard } from '../components/ContestCard'
+import { AitbCardBrief } from '../components/AitbCardBrief'
+import { normalizeUrl } from '../lib/normalizeUrl'
+import type { BingoScan, BingoTask } from '../types/database'
+
+async function compressToJpeg(file: File, maxDim = 1920, quality = 0.85): Promise<Blob> {
+  let width = 0, height = 0
+  let drawSource: CanvasImageSource | null = null
+  let bitmap: ImageBitmap | null = null
+  let objectUrl: string | null = null
+  let imgEl: HTMLImageElement | null = null
+  try {
+    try {
+      bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' } as ImageBitmapOptions)
+      width = bitmap.width
+      height = bitmap.height
+      drawSource = bitmap
+    } catch {
+      objectUrl = URL.createObjectURL(file)
+      imgEl = await new Promise<HTMLImageElement>((resolve, reject) => {
+        const i = new Image()
+        i.onload = () => resolve(i)
+        i.onerror = () => reject(new Error('decode-failed'))
+        i.src = objectUrl!
+      })
+      width = imgEl.naturalWidth
+      height = imgEl.naturalHeight
+      drawSource = imgEl
+    }
+    if (!width || !height) throw new Error('decode-failed')
+    const scale = Math.min(1, maxDim / Math.max(width, height))
+    const w = Math.max(1, Math.round(width * scale))
+    const h = Math.max(1, Math.round(height * scale))
+    const canvas = document.createElement('canvas')
+    canvas.width = w
+    canvas.height = h
+    const ctx = canvas.getContext('2d')
+    if (!ctx) throw new Error('canvas-context-failed')
+    ctx.drawImage(drawSource, 0, 0, w, h)
+    return await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob(b => b ? resolve(b) : reject(new Error('toBlob-failed')), 'image/jpeg', quality)
+    })
+  } finally {
+    bitmap?.close?.()
+    if (objectUrl) URL.revokeObjectURL(objectUrl)
+  }
+}
+
+export function BingoDashParticipant() {
+  const { taskId } = useParams<{ taskId: string }>()
+  const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
+  const isSnakeLadder = searchParams.get('from') === 'snake-ladder'
+  const snakeTileParam = searchParams.get('tile')
+  const snakeTile = snakeTileParam ? parseInt(snakeTileParam, 10) : null
+  const [backPath, setBackPath] = useState(isSnakeLadder ? '/snake-ladder' : '/bingo-dash')
+  const { team, loading: teamLoading, isRegistered, leaveTeam } = useBingoDashTeam()
+  const isObserver = !isSnakeLadder && localStorage.getItem('bingo-dash-member-role') === 'observer'
+  const { pages, loading: pagesLoading } = useBingoTaskPages(taskId)
+  const { photos, loading: photosLoading } = useBingoTaskPhotos(taskId)
+  const { links } = useTaskLinks(taskId, 'bingo_task_links')
+  const { recordScan, toggleComplete } = useBingoScans()
+
+  const [task, setTask] = useState<BingoTask | null>(null)
+  const [showSplash, setShowSplash] = useState(!isSnakeLadder)
+  const [scanRecord, setScanRecord] = useState<{ id: string; completed: boolean; words: string[] } | null>(null)
+  const [scanRecorded, setScanRecorded] = useState(false)
+  const [currentPage, setCurrentPage] = useState(0)
+  const [completing, setCompleting] = useState(false)
+  const [showLeaveConfirm, setShowLeaveConfirm] = useState(false)
+  const [leaving, setLeaving] = useState(false)
+  // Snake & Ladder mode: team picker state
+  const [snakeTeams, setSnakeTeams] = useState<SnakeTeam[]>([])
+  const [snakeSnakes, setSnakeSnakes] = useState<Record<string, number>>({})
+  const [snakeLadders, setSnakeLadders] = useState<Record<string, number>>({})
+  const [snakeResult, setSnakeResult] = useState<{ team: SnakeTeam; landed: number; jump: 'snake' | 'ladder' | null; to: number; newPoints: number } | null>(null)
+  const [snakeMoving, setSnakeMoving] = useState(false)
+  // Marshal password state
+  const [marshalPassword, setMarshalPassword] = useState('')
+  const [marshalInput, setMarshalInput] = useState('')
+  const [marshalError, setMarshalError] = useState('')
+  // Global photo submissions toggle (controlled from marshal admin)
+  const [photoSubmissionsEnabled, setPhotoSubmissionsEnabled] = useState(true)
+  // Photo submission state
+  const [photoUploading, setPhotoUploading] = useState(false)
+  const [photoSubmitted, setPhotoSubmitted] = useState(false)
+  // Answer-input state: one string per answer row
+  const [answerInputs, setAnswerInputs] = useState<string[]>([])
+  const [carouselIdx, setCarouselIdx] = useState(0)
+  const letterRefs = useRef<(HTMLInputElement | null)[][]>([])
+
+  // Send the player back to THEIR OWN board. /bingo-dash always resolves the
+  // house board (the global bingo_settings pointer only moves for the owner),
+  // so a sub account's player finishing a tile would otherwise land in someone
+  // else's game. Only diverge when the team's board isn't the global one, so
+  // the owner's players keep the exact route they have today.
+  useEffect(() => {
+    if (isSnakeLadder || !team?.section_id) return
+    let cancelled = false
+    ;(async () => {
+      const [{ data: settings }, { data: section }] = await Promise.all([
+        supabase.from('bingo_settings').select('active_section_id').eq('id', 'main').maybeSingle(),
+        supabase.from('bingo_sections').select('slug').eq('id', team.section_id).maybeSingle(),
+      ])
+      if (cancelled || !section?.slug) return
+      if (settings?.active_section_id !== team.section_id) {
+        setBackPath(`/bingo-dash/play/${section.slug}`)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [isSnakeLadder, team?.section_id])
+
+  const focusLetter = useCallback((rowIdx: number, charIdx: number) => {
+    letterRefs.current[rowIdx]?.[charIdx]?.focus()
+  }, [])
+
+  useEffect(() => {
+    if (!taskId) return
+    supabase.from('bingo_tasks').select('*').eq('id', taskId).single().then(({ data }) => {
+      if (data) {
+        setTask(data)
+        if (data.task_type === 'answer' && data.answer_text) {
+          const rows = data.answer_text.split('\n').map((r: string) => r.trim()).filter(Boolean)
+          // Restore saved answers from localStorage
+          const saved = localStorage.getItem(`bingo-answers-${taskId}`)
+          if (saved) {
+            try {
+              const parsed = JSON.parse(saved) as string[]
+              setAnswerInputs(rows.map((_r: string, i: number) => parsed[i] ?? ''))
+            } catch { setAnswerInputs(rows.map(() => '')) }
+          } else {
+            setAnswerInputs(rows.map(() => ''))
+          }
+        }
+      }
+    })
+  }, [taskId])
+
+  // Load the board's marshal password + photo-submissions toggle, subscribe to live changes
+  const sectionId = team?.section_id ?? null
+  useEffect(() => {
+    if (isSnakeLadder || !sectionId) return
+    const applySettings = (data: { marshal_password?: string | null; photo_submissions_enabled?: boolean | null } | null) => {
+      if (!data) return
+      if (typeof data.marshal_password === 'string') setMarshalPassword(data.marshal_password)
+      if (typeof data.photo_submissions_enabled === 'boolean') {
+        setPhotoSubmissionsEnabled(data.photo_submissions_enabled)
+      }
+    }
+    supabase.from('bingo_sections').select('marshal_password, photo_submissions_enabled').eq('id', sectionId).single()
+      .then(({ data }) => applySettings(data))
+    const channel = supabase
+      .channel('bingo-section-participant')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'bingo_sections', filter: `id=eq.${sectionId}` }, (payload) => {
+        applySettings(payload.new as { marshal_password?: string | null; photo_submissions_enabled?: boolean | null })
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [isSnakeLadder, sectionId])
+
+  // ── AI Team Building card ───────────────────────────────────────────────
+  // An imported AITB activity gets its own mission brief (hero, steps, props,
+  // interactive draw, tool buttons) instead of the generic instruction pages.
+  // Completion is unchanged: marshal password → toggleComplete → scoreboard.
+  // AI Team Building card types removed — bingo-only build.
+  const aitbActivity: { emoji?: string; act?: number; mins?: number; tagline?: string } | null = null
+
+  // The draw / typed words belong to the TEAM, not the phone that made them —
+  // a roulette spin on one handset has to reach the teammate holding the other.
+  // Writes BEFORE touching local state on purpose: the spin/deal modules call
+  // this from inside a setState updater, so a synchronous setScanRecord here
+  // would be a render-phase update of this page from inside the module.
+  const saveAitbWords = useCallback(async (words: string[]) => {
+    if (!scanRecord) return
+    const { error } = await supabase.from('bingo_scans').update({ words }).eq('id', scanRecord.id)
+    if (error) { console.warn('Could not save AITB result:', error.message); return }
+    setScanRecord(prev => (prev ? { ...prev, words } : prev))
+  }, [scanRecord])
+
+  // Pull a teammate's draw in live. Only mounted for AITB cards — every other
+  // card type has nothing on the row that can change from another phone.
+  useEffect(() => {
+    if (!aitbActivity || !scanRecord) return
+    const channel = supabase
+      .channel(`bingo-scan-words-${scanRecord.id}`)
+      .on(
+        'postgres_changes',
+        { event: 'UPDATE', schema: 'public', table: 'bingo_scans', filter: `id=eq.${scanRecord.id}` },
+        ({ new: updated }) => {
+          const row = updated as BingoScan
+          setScanRecord(prev => (prev ? { ...prev, completed: row.completed, words: row.words ?? [] } : prev))
+        }
+      )
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [aitbActivity, scanRecord?.id]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Snake & Ladder mode: load teams + board config
+  useEffect(() => {
+    if (!isSnakeLadder) return
+    let cancelled = false
+    ;(async () => {
+      const settingsRes = await supabase.from('snake_settings').select('active_game_id').eq('id', 'main').maybeSingle()
+      const activeId = settingsRes.data?.active_game_id as string | null
+      if (!activeId || cancelled) return
+      const [gameRes, teamsRes] = await Promise.all([
+        supabase.from('snake_games').select('snakes, ladders').eq('id', activeId).single(),
+        supabase.from('snake_teams').select('*').eq('game_id', activeId).order('sort_order'),
+      ])
+      if (cancelled) return
+      if (gameRes.data) {
+        setSnakeSnakes((gameRes.data.snakes ?? {}) as Record<string, number>)
+        setSnakeLadders((gameRes.data.ladders ?? {}) as Record<string, number>)
+      }
+      if (teamsRes.data) setSnakeTeams(teamsRes.data)
+    })()
+    return () => { cancelled = true }
+  }, [isSnakeLadder])
+
+  // Persist answer inputs to localStorage
+  useEffect(() => {
+    if (taskId && answerInputs.length > 0) {
+      localStorage.setItem(`bingo-answers-${taskId}`, JSON.stringify(answerInputs))
+    }
+  }, [taskId, answerInputs])
+
+  // Derived: the answer rows expected by the task
+  const answerRows = task?.task_type === 'answer' && task.answer_text
+    ? task.answer_text.split('\n').map(r => r.trim()).filter(Boolean)
+    : []
+
+  const normalize = (s: string) => s.replace(/\s/g, '').toLowerCase()
+
+  // True when every row is fully and correctly filled (case-insensitive)
+  const answerMatches = answerRows.length > 0 && answerRows.every(
+    (row, i) => normalize(answerInputs[i] ?? '') === normalize(row)
+  )
+
+  useEffect(() => {
+    if (isSnakeLadder) return
+    if (team && taskId && !scanRecorded) {
+      recordScan(team.id, taskId).then((scan) => {
+        setScanRecorded(true)
+        if (scan) setScanRecord({ id: scan.id, completed: scan.completed, words: scan.words ?? [] })
+      })
+    }
+  }, [isSnakeLadder, team, taskId, scanRecorded, recordScan])
+
+  // Auto-complete when answer-input card answer is correct
+  useEffect(() => {
+    if (isSnakeLadder) return
+    if (!answerMatches || !scanRecord || scanRecord.completed || completing) return
+    setCompleting(true)
+    toggleComplete(scanRecord.id, true).then(() => {
+      setScanRecord(prev => prev ? { ...prev, completed: true } : prev)
+      setCompleting(false)
+    })
+  }, [answerMatches]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  const handleLeave = async () => {
+    setLeaving(true)
+    leaveTeam()
+    setScanRecorded(false)
+    setScanRecord(null)
+    setShowLeaveConfirm(false)
+    setLeaving(false)
+  }
+
+  const handlePhotoUpload = async (file: File) => {
+    if (!team || !taskId || !scanRecord) return
+    if (file.size > 25 * 1024 * 1024) { alert('Photo too large (max 25 MB).'); return }
+    setPhotoUploading(true)
+    try {
+      let upload: Blob = file
+      try {
+        upload = await compressToJpeg(file)
+      } catch (err) {
+        if (file.type === 'image/heic' || file.type === 'image/heif' || /\.(heic|heif)$/i.test(file.name)) {
+          alert("This iPhone photo format (HEIC) couldn't be processed on this device. In iPhone Settings → Camera → Formats, choose 'Most Compatible', or share the photo via the Photos app.")
+          return
+        }
+        console.warn('Image compression failed, uploading original:', err)
+      }
+      const path = `bingo-media/photo-submissions/${team.id}-${taskId}-${Date.now()}.jpg`
+      const { error: uploadErr } = await supabase.storage.from('media').upload(path, upload, { upsert: false, contentType: 'image/jpeg' })
+      if (uploadErr) { alert('Upload failed: ' + uploadErr.message); return }
+      const { data: urlData } = supabase.storage.from('media').getPublicUrl(path)
+      const { error: insertErr } = await supabase.from('bingo_photo_submissions').insert({
+        team_id: team.id,
+        task_id: taskId,
+        scan_id: scanRecord.id,
+        photo_url: urlData.publicUrl,
+        status: 'pending',
+      })
+      if (insertErr) { alert('Could not save submission: ' + insertErr.message); return }
+      setPhotoSubmitted(true)
+    } finally {
+      setPhotoUploading(false)
+    }
+  }
+
+  // The bingo time-up alarm overlays every state below — only mounted in the
+  // bingo flow so Snake & Ladder players are unaffected.
+  const timeUpOverlay = !isSnakeLadder ? <TimeUpAlarm sectionId={team?.section_id ?? null} /> : null
+
+  // ── Loading ─────────────────────────────────────────────────────────
+  if ((!isSnakeLadder && teamLoading) || !task) {
+    return (
+      <>
+        <div className="min-h-screen flex items-center justify-center bg-gray-950">
+          <div className="text-gray-400 text-xl font-bold animate-pulse">Loading...</div>
+        </div>
+        {timeUpOverlay}
+      </>
+    )
+  }
+
+  // ── Registration (Bingo Dash only — Snake & Ladder picks a team on completion) ─
+  // Admin creates teams in advance; participants must join from /bingo-dash (search + password).
+  if (!isSnakeLadder && !isRegistered) {
+    return (
+      <>
+        <div className="min-h-screen flex flex-col items-center justify-center bg-gray-950 text-center px-6">
+          <ParticleBackground />
+          <div className="relative z-10 max-w-sm">
+            <div className="text-5xl mb-4">🎯</div>
+            <h2 className="text-white text-2xl font-black mb-2">Join your group first</h2>
+            <p className="text-gray-400 text-sm mb-6">
+              You need to pick your group before you can complete this task.
+            </p>
+            <button
+              onClick={() => navigate(backPath)}
+              className="px-6 py-3 rounded-2xl text-white font-black text-base"
+              style={{ backgroundColor: '#a855f7', boxShadow: '0 8px 24px #a855f744' }}
+            >
+              Go to Join Page →
+            </button>
+          </div>
+        </div>
+        {timeUpOverlay}
+      </>
+    )
+  }
+
+  if (pagesLoading || photosLoading) {
+    return (
+      <>
+        <div className="min-h-screen flex items-center justify-center bg-gray-950">
+          <div className="text-gray-400 text-xl font-bold animate-pulse">Loading challenge...</div>
+        </div>
+        {timeUpOverlay}
+      </>
+    )
+  }
+
+  // ── Splash ───────────────────────────────────────────────────────────
+  if (showSplash) {
+    return (
+      <>
+      <div
+        className="fixed inset-0 z-50 flex flex-col items-center justify-center text-white overflow-hidden"
+        style={{ backgroundColor: task.hex_code }}
+        onClick={() => setShowSplash(false)}
+      >
+        <div className="absolute inset-0 bg-black/10" />
+        <div className="absolute -top-32 -left-32 w-64 h-64 bg-white/10 rounded-full blur-3xl animate-float" />
+        <div className="absolute -bottom-32 -right-32 w-80 h-80 bg-white/10 rounded-full blur-3xl animate-float" style={{ animationDelay: '1s' }} />
+
+        <div className="relative z-10 text-center px-8 animate-bounce-in">
+          <div className="text-6xl mb-6">{isSnakeLadder ? '🐍🪜' : aitbActivity?.emoji ?? '🎯'}</div>
+          <p className="text-sm font-bold opacity-70 uppercase tracking-[0.2em] mb-2">
+            {aitbActivity ? `Activity ${aitbActivity.act} · ${aitbActivity.mins} min` : `${task.color} Challenge`}
+          </p>
+          <h1 className="text-5xl font-black tracking-tight mb-4 leading-tight">
+            {task.title}
+          </h1>
+          <div className="w-16 h-1 bg-white/40 rounded-full mx-auto mb-6" />
+          {aitbActivity && (
+            <p className="text-lg opacity-90 font-bold mb-3 leading-snug">{aitbActivity.tagline}</p>
+          )}
+          {task.is_contest && team && sectionId ? (
+            /* ── Contest card: the whole duel flow replaces solo completion ──
+               ContestCard owns every state (challenge → live → result), and the
+               cross-off happens when the marshal declares a winner — never from
+               the normal Complete button. */
+            <>
+              <ContestCard
+                task={task}
+                team={team}
+                sectionId={sectionId}
+                marshalPassword={marshalPassword}
+              />
+              <button
+                onClick={() => navigate(backPath)}
+                className="mt-4 w-full py-3 rounded-2xl text-white/70 font-bold border border-white/15 hover:bg-white/5 transition-colors"
+              >
+                ← Back to Board
+              </button>
+            </>
+          ) : scanRecord?.completed ? (
+            <div className="text-center">
+              <div
+                className="p-6 rounded-2xl border-2"
+                style={{ backgroundColor: `${task.hex_code}25`, borderColor: `${task.hex_code}66` }}
+              >
+                <div className="text-4xl mb-2">🎉</div>
+                <p className="text-2xl font-black mb-1 text-white">Challenge Complete!</p>
+                <p className="text-white/60 text-sm font-medium">Great job, {team?.name}!</p>
+                <button
+                  onClick={() => navigate(backPath)}
+                  className="mt-5 w-full py-3 rounded-2xl text-white font-black uppercase tracking-wider transition-all active:scale-95"
+                  style={{ backgroundColor: task.hex_code, boxShadow: `0 4px 0 ${task.hex_code}88` }}
+                >
+                  ← Back to Board
+                </button>
+              </div>
+              <button
+                onClick={async () => {
+                  if (!scanRecord) return
+                  setCompleting(true)
+                  try {
+                    await toggleComplete(scanRecord.id, false)
+                    setScanRecord({ ...scanRecord, completed: false })
+                    if (task.task_type === 'answer') {
+                      setAnswerInputs(answerRows.map(() => ''))
+                    }
+                  } finally { setCompleting(false) }
+                }}
+                disabled={completing}
+                className="mt-3 px-4 py-2 text-sm text-white/40 hover:text-red-400 transition-colors"
+              >
+                Undo completion
+              </button>
+            </div>
+          ) : (
+            /* ── Per-type completion card ──────────────────────── */
+            <>
+            <div
+              className="rounded-3xl p-5 border-2 animate-pulse-border"
+              style={{
+                borderColor: `${task.hex_code}99`,
+                backgroundColor: `${task.hex_code}18`,
+                boxShadow: `0 0 24px ${task.hex_code}44, inset 0 0 24px ${task.hex_code}11`,
+              }}
+            >
+              {/* ── Standard: Marshal password + Complete button ── */}
+              {task.task_type === 'standard' && (
+                <>
+                  {task.require_marshal && (
+                    <>
+                      <div className="flex items-center gap-3 mb-4 p-3 rounded-2xl bg-yellow-400/20 border border-yellow-400/50 animate-attention">
+                        <div className="flex flex-col items-center gap-0.5 flex-shrink-0">
+                          <span className="text-2xl">👮</span>
+                          <span className="text-xs text-yellow-300 font-black uppercase tracking-tight leading-none">Marshal</span>
+                        </div>
+                        <p className="text-yellow-200 text-sm font-black uppercase tracking-wide leading-snug">
+                          {task.completion_warning || 'Enter the Marshal password to complete this challenge.'}
+                        </p>
+                        <span className="text-2xl flex-shrink-0">🛑</span>
+                      </div>
+                      <div className="mb-4">
+                        <input
+                          type="password"
+                          value={marshalInput}
+                          onChange={e => { setMarshalInput(e.target.value); setMarshalError('') }}
+                          placeholder="Marshal password..."
+                          className="w-full px-4 py-3 rounded-2xl border-2 text-center text-lg font-bold focus:outline-none transition-colors bg-white/10 text-white placeholder-white/30"
+                          style={{ borderColor: marshalError ? '#ef4444' : marshalInput ? task.hex_code : 'rgba(255,255,255,0.2)' }}
+                        />
+                        {marshalError && (
+                          <p className="text-red-400 text-xs font-bold text-center mt-2">{marshalError}</p>
+                        )}
+                      </div>
+                    </>
+                  )}
+                  <button
+                    onClick={async () => {
+                      if (!scanRecord) return
+                      if (task.require_marshal && marshalInput.trim() !== marshalPassword) {
+                        setMarshalError('Wrong marshal password.')
+                        return
+                      }
+                      setCompleting(true)
+                      try {
+                        await toggleComplete(scanRecord.id, true)
+                        setScanRecord({ ...scanRecord, completed: true })
+                      } finally { setCompleting(false) }
+                    }}
+                    disabled={completing || !scanRecord}
+                    className="w-full py-4 rounded-2xl text-white text-xl font-black uppercase tracking-wider transition-all active:scale-95 disabled:opacity-50"
+                    style={{
+                      backgroundColor: task.hex_code,
+                      boxShadow: `0 6px 0 ${task.hex_code}88, 0 8px 20px ${task.hex_code}44`,
+                    }}
+                  >
+                    {completing ? 'Completing...' : 'Complete Challenge ✅'}
+                  </button>
+                </>
+              )}
+
+              {/* ── Photo: Submit image for marshal approval ── */}
+              {task.task_type === 'photo' && photoSubmissionsEnabled && (
+                <>
+                  <p className="text-white font-black text-lg text-center mb-4">📸 Submit Your Photo</p>
+                  <p className="text-white/50 text-sm text-center mb-5">A marshal will review and approve your submission.</p>
+                  {photoSubmitted ? (
+                    <div className="p-4 rounded-2xl bg-green-400/15 border border-green-400/40 text-center">
+                      <div className="text-3xl mb-2">⏳</div>
+                      <p className="text-green-300 font-black">Photo submitted!</p>
+                      <p className="text-green-300/60 text-sm mt-1">Waiting for marshal review</p>
+                    </div>
+                  ) : (
+                    <label className={`flex flex-col items-center justify-center gap-3 w-full py-6 rounded-2xl border-2 border-dashed border-white/30 text-white/60 font-bold text-sm cursor-pointer hover:border-white/50 hover:text-white/80 hover:bg-white/5 transition-all ${photoUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                      <span className="text-4xl">{photoUploading ? '⏳' : '📷'}</span>
+                      <span>{photoUploading ? 'Uploading...' : 'Tap to take or upload a photo'}</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        disabled={photoUploading || !scanRecord}
+                        onChange={e => {
+                          const f = e.target.files?.[0]
+                          e.target.value = ''
+                          if (f) handlePhotoUpload(f)
+                        }}
+                      />
+                    </label>
+                  )}
+                </>
+              )}
+
+              {/* ── Answer: Letter-box input ── */}
+              {task.task_type === 'answer' && (
+                <>
+                  {task.answer_question && (
+                    <p className="text-white font-black text-lg mb-4 text-center leading-snug">
+                      {task.answer_question}
+                    </p>
+                  )}
+                  <div className="flex flex-col gap-5">
+                    {answerRows.map((row, rowIdx) => {
+                      const letters = row.replace(/\s/g, '').split('')
+                      const typed = answerInputs[rowIdx] ?? ''
+                      const rowCorrect = normalize(typed) === normalize(row.replace(/\s/g, ''))
+                      if (!letterRefs.current[rowIdx]) letterRefs.current[rowIdx] = []
+                      return (
+                        <div key={rowIdx} className="flex flex-col items-center gap-2">
+                          {answerRows.length > 1 && (
+                            <label className="text-white/50 text-xs font-bold uppercase tracking-wider">
+                              Word {rowIdx + 1}
+                            </label>
+                          )}
+                          <div className="flex gap-1.5 justify-center flex-wrap">
+                            {letters.map((_, charIdx) => {
+                              const typedChar = typed[charIdx] ?? ''
+                              const expectedChar = letters[charIdx]
+                              const charCorrect = typedChar.length > 0 && typedChar.toLowerCase() === expectedChar.toLowerCase()
+                              const charWrong = typedChar.length > 0 && !charCorrect
+                              return (
+                                <input
+                                  key={charIdx}
+                                  ref={el => { letterRefs.current[rowIdx][charIdx] = el }}
+                                  type="text"
+                                  inputMode="text"
+                                  autoCapitalize="characters"
+                                  autoComplete="off"
+                                  maxLength={1}
+                                  value={typedChar.toUpperCase()}
+                                  onChange={e => {
+                                    const ch = e.target.value.slice(-1).replace(/[^a-zA-Z0-9]/g, '')
+                                    if (!ch) return
+                                    setAnswerInputs(prev => {
+                                      const next = [...prev]
+                                      const arr = (next[rowIdx] ?? '').split('')
+                                      while (arr.length <= charIdx) arr.push('')
+                                      arr[charIdx] = ch
+                                      next[rowIdx] = arr.join('')
+                                      return next
+                                    })
+                                    if (charIdx < letters.length - 1) focusLetter(rowIdx, charIdx + 1)
+                                  }}
+                                  onKeyDown={e => {
+                                    if (e.key === 'Backspace') {
+                                      e.preventDefault()
+                                      const current = typed[charIdx] ?? ''
+                                      if (current) {
+                                        setAnswerInputs(prev => {
+                                          const next = [...prev]
+                                          const arr = (next[rowIdx] ?? '').split('')
+                                          arr[charIdx] = ''
+                                          next[rowIdx] = arr.join('')
+                                          return next
+                                        })
+                                      } else if (charIdx > 0) {
+                                        setAnswerInputs(prev => {
+                                          const next = [...prev]
+                                          const arr = (next[rowIdx] ?? '').split('')
+                                          arr[charIdx - 1] = ''
+                                          next[rowIdx] = arr.join('')
+                                          return next
+                                        })
+                                        focusLetter(rowIdx, charIdx - 1)
+                                      }
+                                    } else if (e.key === 'ArrowLeft' && charIdx > 0) {
+                                      focusLetter(rowIdx, charIdx - 1)
+                                    } else if (e.key === 'ArrowRight' && charIdx < letters.length - 1) {
+                                      focusLetter(rowIdx, charIdx + 1)
+                                    }
+                                  }}
+                                  onFocus={e => e.target.select()}
+                                  className={`w-10 h-12 text-center text-xl font-black rounded-lg border-2 outline-none transition-all ${
+                                    rowCorrect
+                                      ? 'border-green-400 bg-green-400/20 text-green-300'
+                                      : charCorrect
+                                      ? 'border-green-400/60 bg-green-400/10 text-green-300'
+                                      : charWrong
+                                      ? 'border-red-400/60 bg-red-400/10 text-red-300'
+                                      : 'border-white/30 bg-black/30 text-white'
+                                  }`}
+                                  style={{ caretColor: 'transparent' }}
+                                />
+                              )
+                            })}
+                          </div>
+                          {rowCorrect && (
+                            <span className="text-green-400 text-xs font-bold mt-0.5">✓ Correct!</span>
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                  {!answerMatches && (
+                    <p className="text-white/40 text-xs text-center mt-4">Fill in the letters above to complete</p>
+                  )}
+                </>
+              )}
+
+              {/* Back to board — shown in every card type */}
+              <button
+                onClick={() => navigate(backPath)}
+                className="mt-5 w-full py-3 rounded-2xl text-white/70 font-bold text-sm uppercase tracking-wider border border-white/20 hover:bg-white/10 hover:text-white transition-all active:scale-95"
+              >
+                ← Back to Board
+              </button>
+            </div>
+
+            {/* ── Supplementary photo upload (any non-photo task, when toggle ON) ── */}
+            {task.task_type !== 'photo' && photoSubmissionsEnabled && (
+              <div className="mt-4 rounded-3xl p-5 border-2 border-white/15 bg-black/30">
+                <p className="text-white font-black text-base text-center mb-1">📸 Optional Photo</p>
+                <p className="text-white/50 text-xs text-center mb-4">Attach an image as evidence — your marshal will review it.</p>
+                {photoSubmitted ? (
+                  <div className="p-4 rounded-2xl bg-green-400/15 border border-green-400/40 text-center">
+                    <div className="text-3xl mb-2">⏳</div>
+                    <p className="text-green-300 font-black">Photo submitted!</p>
+                    <p className="text-green-300/60 text-sm mt-1">Waiting for marshal review</p>
+                  </div>
+                ) : (
+                  <label className={`flex flex-col items-center justify-center gap-3 w-full py-5 rounded-2xl border-2 border-dashed border-white/25 text-white/55 font-bold text-sm cursor-pointer hover:border-white/45 hover:text-white/75 hover:bg-white/5 transition-all ${photoUploading ? 'opacity-50 pointer-events-none' : ''}`}>
+                    <span className="text-3xl">{photoUploading ? '⏳' : '📷'}</span>
+                    <span>{photoUploading ? 'Uploading...' : 'Tap to take or upload a photo'}</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      disabled={photoUploading || !scanRecord}
+                      onChange={e => {
+                        const f = e.target.files?.[0]
+                        e.target.value = ''
+                        if (f) handlePhotoUpload(f)
+                      }}
+                    />
+                  </label>
+                )}
+              </div>
+            )}
+            </>
+          )}
+        </div>}
+      </main>
+    </div>
+    {timeUpOverlay}
+    </>
+  )
+}

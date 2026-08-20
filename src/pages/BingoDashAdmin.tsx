@@ -1,0 +1,4803 @@
+import { useEffect, useState, useCallback, useRef } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { QRCodeSVG } from 'qrcode.react'
+import JSZip from 'jszip'
+import { supabase } from '../lib/supabase'
+import { useBingoAuth } from '../hooks/useBingoAuth'
+import type { BingoTask, BingoTeam, BingoScan, BingoSettings, BingoSection, BingoCategory, BingoChallengeSection, BingoMember, BingoPhotoSubmission, BingoBoardCard, BingoDuel, BonusItem } from '../types/database'
+import { BINGO_LINES, buildBingoSlots, completedBingoLines } from '../lib/bingoLines'
+import { TileFace } from '../components/BingoTileFace'
+import { CONTEST_GAMES, getContestGame } from '../lib/contestGames'
+import { duelBonusByTeam } from '../hooks/useBingoDuels'
+
+// Sanitize a string into a filesystem-safe filename component.
+function sanitizeForFilename(s: string): string {
+  return s
+    .replace(/[<>:"/\\|?*\x00-\x1F]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^[-.]+|[-.]+$/g, '')
+    .slice(0, 80) || 'unknown'
+}
+
+function extFromUrl(url: string): string {
+  const match = url.split('?')[0].match(/\.([a-zA-Z0-9]{2,5})$/)
+  return match ? match[1].toLowerCase() : 'jpg'
+}
+
+function SubmissionThumb({ url }: { url: string }) {
+  const [broken, setBroken] = useState(false)
+  if (broken) {
+    return (
+      <div
+        className="w-28 h-28 flex flex-col items-center justify-center rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 text-[10px] font-bold flex-shrink-0 text-center px-2"
+        title="The photo file is missing from storage. The submission row can be deleted."
+      >
+        <span className="text-2xl mb-1">🚫</span>
+        <span>Photo missing</span>
+      </div>
+    )
+  }
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer" className="flex-shrink-0">
+      <img
+        src={url}
+        alt="submission"
+        onError={() => setBroken(true)}
+        className="w-28 h-28 object-cover rounded-lg border border-white/10 hover:opacity-90 transition-opacity"
+      />
+    </a>
+  )
+}
+
+const PRESET_COLORS = [
+  { name: 'Red', hex: '#EF4444' },
+  { name: 'Orange', hex: '#F97316' },
+  { name: 'Amber', hex: '#F59E0B' },
+  { name: 'Yellow', hex: '#EAB308' },
+  { name: 'Lime', hex: '#84CC16' },
+  { name: 'Green', hex: '#22C55E' },
+  { name: 'Emerald', hex: '#10B981' },
+  { name: 'Teal', hex: '#14B8A6' },
+  { name: 'Cyan', hex: '#06B6D4' },
+  { name: 'Sky Blue', hex: '#38BDF8' },
+  { name: 'Blue', hex: '#3B82F6' },
+  { name: 'Indigo', hex: '#6366F1' },
+  { name: 'Violet', hex: '#8B5CF6' },
+  { name: 'Purple', hex: '#A855F7' },
+  { name: 'Fuchsia', hex: '#D946EF' },
+  { name: 'Pink', hex: '#EC4899' },
+  { name: 'Rose', hex: '#F43F5E' },
+]
+
+function formatTime(totalSeconds: number): string {
+  const s = Math.max(0, Math.round(totalSeconds))
+  const m = Math.floor(s / 60)
+  const sec = s % 60
+  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`
+}
+
+// .in() filters with many ids can blow past URL limits — fetch in chunks.
+async function fetchInChunks<T>(table: string, column: string, ids: string[]): Promise<T[]> {
+  if (ids.length === 0) return []
+  const CHUNK = 150
+  const out: T[] = []
+  for (let i = 0; i < ids.length; i += CHUNK) {
+    const { data } = await supabase.from(table).select('*').in(column, ids.slice(i, i + CHUNK))
+    if (data) out.push(...(data as T[]))
+  }
+  return out
+}
+
+// ── Import helpers ─────────────────────────────────────────────────────────────
+interface ImportRow {
+  title: string
+  color: string
+  hex_code: string
+  clues: string[]
+}
+
+function parseImport(raw: string): ImportRow[] {
+  const parsed = JSON.parse(raw)
+  if (!Array.isArray(parsed)) throw new Error('JSON must be an array of objects')
+  return parsed.map((item: unknown, i: number) => {
+    if (typeof item !== 'object' || item === null) throw new Error(`Item ${i + 1} is not an object`)
+    const obj = item as Record<string, unknown>
+    if (!obj.title || typeof obj.title !== 'string') throw new Error(`Item ${i + 1} missing "title"`)
+    if (!obj.color || typeof obj.color !== 'string') throw new Error(`Item ${i + 1} missing "color"`)
+    if (!obj.hex_code || typeof obj.hex_code !== 'string') throw new Error(`Item ${i + 1} missing "hex_code"`)
+    const clues: string[] = []
+    if (typeof obj.clue === 'string' && obj.clue.trim()) clues.push(obj.clue.trim())
+    if (Array.isArray(obj.clues)) {
+      for (const c of obj.clues) {
+        if (typeof c === 'string' && c.trim()) clues.push(c.trim())
+      }
+    }
+    return { title: obj.title.trim(), color: obj.color.trim(), hex_code: obj.hex_code.trim(), clues }
+  })
+}
+
+// ── Color picker sub-form ──────────────────────────────────────────────────────
+function ColorPicker({
+  hex,
+  colorName,
+  onHexChange,
+  onNameChange,
+}: {
+  hex: string
+  colorName: string
+  onHexChange: (h: string) => void
+  onNameChange: (n: string) => void
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-1">Color Name</label>
+        <input
+          type="text"
+          value={colorName}
+          onChange={e => onNameChange(e.target.value)}
+          placeholder="e.g. Blue"
+          className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+        />
+      </div>
+      <div>
+        <label className="block text-sm font-medium text-gray-700 mb-2">Color</label>
+        <div className="flex gap-1.5 flex-wrap mb-2">
+          {PRESET_COLORS.map(c => (
+            <button
+              key={c.hex}
+              type="button"
+              onClick={() => { onHexChange(c.hex); if (!colorName) onNameChange(c.name) }}
+              className={`w-7 h-7 rounded-full border-2 transition-all ${hex === c.hex ? 'border-gray-900 scale-110' : 'border-transparent'}`}
+              style={{ backgroundColor: c.hex }}
+              title={c.name}
+            />
+          ))}
+        </div>
+        <div className="flex items-center gap-2">
+          <input type="color" value={hex} onChange={e => onHexChange(e.target.value)} className="w-9 h-9 rounded cursor-pointer" />
+          <input type="text" value={hex} onChange={e => onHexChange(e.target.value)} className="px-3 py-2 rounded-lg border border-gray-300 font-mono text-sm w-28" />
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Board tile (interactive editor with drag support) ──────────────────────────
+function BoardTile({
+  task,
+  index,
+  total,
+  isDragOver,
+  isBeingDragged,
+  onMoveLeft,
+  onMoveRight,
+  onRemove,
+  onEdit,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
+  onDragLeave,
+}: {
+  task: BingoTask
+  index: number
+  total: number
+  isDragOver: boolean
+  isBeingDragged: boolean
+  onMoveLeft: () => void
+  onMoveRight: () => void
+  onRemove: () => void
+  onEdit: () => void
+  onDragStart: (e: React.DragEvent) => void
+  onDragOver: (e: React.DragEvent) => void
+  onDrop: (e: React.DragEvent) => void
+  onDragEnd: () => void
+  onDragLeave: () => void
+}) {
+  return (
+    <div
+      draggable
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onDragLeave={onDragLeave}
+      className={`relative group aspect-square rounded-lg overflow-hidden cursor-grab active:cursor-grabbing select-none transition-all duration-150 ${
+        isBeingDragged ? 'opacity-40 scale-95' : ''
+      } ${isDragOver ? 'ring-2 ring-white scale-105' : ''}`}
+      style={{ backgroundColor: task.hex_code }}
+    >
+      {/* Drag-over highlight */}
+      {isDragOver && (
+        <div className="absolute inset-0 bg-white/30 z-30 rounded-lg pointer-events-none" />
+      )}
+
+      {/* Category badge */}
+      {task.category && (
+        <div className="absolute top-0.5 left-0.5 right-0.5 z-10 pointer-events-none">
+          <span className="block text-[7px] bg-black/40 text-white/90 rounded px-1 py-px truncate leading-tight font-bold">
+            {task.category}
+          </span>
+        </div>
+      )}
+
+      {/* Title */}
+      <div className="absolute inset-0 flex items-center justify-center p-1.5 pt-4">
+        <p className="text-white font-black text-[9px] text-center leading-tight line-clamp-3 break-words">
+          {task.title}
+        </p>
+      </div>
+
+      {/* Hover controls */}
+      <div className="absolute inset-0 bg-black/65 opacity-0 group-hover:opacity-100 transition-opacity duration-150 flex flex-col z-20">
+        <div className="flex-1 flex items-center justify-center">
+          <button
+            onClick={e => { e.stopPropagation(); onEdit() }}
+            className="text-base hover:scale-125 transition-transform"
+            title="Edit tile"
+          >
+            ✏️
+          </button>
+        </div>
+        <div className="flex items-center justify-between px-1.5 pb-1.5">
+          <button
+            onClick={e => { e.stopPropagation(); onMoveLeft() }}
+            disabled={index === 0}
+            className="text-white/80 hover:text-white disabled:opacity-20 font-bold text-xs leading-none px-0.5"
+            title="Move left"
+          >
+            ◀
+          </button>
+          <button
+            onClick={e => { e.stopPropagation(); onRemove() }}
+            className="text-red-300 hover:text-red-100 font-bold text-xs leading-none"
+            title="Remove from grid"
+          >
+            ✕
+          </button>
+          <button
+            onClick={e => { e.stopPropagation(); onMoveRight() }}
+            disabled={index === total - 1}
+            className="text-white/80 hover:text-white disabled:opacity-20 font-bold text-xs leading-none px-0.5"
+            title="Move right"
+          >
+            ▶
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Category group block (used in Board tab gallery) ──────────────────────────
+function CategoryGroupBlock({
+  group,
+  editingCategoryId, setEditingCategoryId,
+  categories, scans, copiedId,
+  boardCountByTask,
+  navigate,
+  saveCategoryInline, setBulkCategoryColor, setBulkCategoryPoints,
+  renameCategoryByLabel,
+  setQrTask, copyLink, duplicateTask, openTileEdit, deleteTask,
+}: {
+  group: { label: string; key: string; tasks: BingoTask[] }
+  editingCategoryId: string | null
+  setEditingCategoryId: (id: string | null) => void
+  categories: BingoCategory[]
+  scans: BingoScan[]
+  copiedId: string | null
+  boardCountByTask: Map<string, number>
+  navigate: (path: string) => void
+  saveCategoryInline: (taskId: string, cat: string) => void
+  setBulkCategoryColor: (key: string, hex: string) => void
+  setBulkCategoryPoints: (key: string, pts: number) => void
+  renameCategoryByLabel: (label: string, newName: string) => void
+  setQrTask: (t: BingoTask) => void
+  copyLink: (id: string) => void
+  duplicateTask: (t: BingoTask) => void
+  openTileEdit: (t: BingoTask) => void
+  deleteTask: (id: string, title: string) => void
+}) {
+  const [renaming, setRenaming] = useState(false)
+  return (
+    <div>
+      {/* Category header */}
+      <div className="flex items-center gap-3 mb-3">
+        {renaming ? (
+          <input
+            type="text"
+            autoFocus
+            defaultValue={group.label}
+            onBlur={e => { renameCategoryByLabel(group.label, e.target.value); setRenaming(false) }}
+            onKeyDown={e => {
+              if (e.key === 'Enter') (e.target as HTMLInputElement).blur()
+              if (e.key === 'Escape') { (e.target as HTMLInputElement).value = group.label; (e.target as HTMLInputElement).blur() }
+            }}
+            className="text-xs font-black uppercase tracking-widest bg-gray-800 text-white border border-violet-500 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-violet-400"
+          />
+        ) : (
+          <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">{group.label}</h3>
+        )}
+        {group.key !== '__none__' && !renaming && (
+          <button
+            onClick={() => setRenaming(true)}
+            className="text-xs text-gray-600 hover:text-violet-400 transition-colors flex-shrink-0"
+            title={`Rename "${group.label}"`}
+          >
+            ✏️
+          </button>
+        )}
+        <span className="text-xs text-gray-500 font-medium">{group.tasks.length}</span>
+        <div className="flex-1 h-px bg-white/10" />
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <span className="text-xs text-gray-500">color for all:</span>
+          <input
+            type="color"
+            defaultValue={group.tasks[0]?.hex_code ?? '#3B82F6'}
+            key={group.key + '-color'}
+            className="w-7 h-7 rounded cursor-pointer border border-white/20"
+            onChange={e => setBulkCategoryColor(group.key, e.target.value)}
+            title={`Set color for all ${group.label} tasks`}
+          />
+        </div>
+        <div className="flex items-center gap-1.5 flex-shrink-0">
+          <span className="text-xs text-gray-500">pts for all:</span>
+          <input
+            type="number" min={0}
+            defaultValue={group.tasks[0]?.points ?? 0}
+            key={group.key + '-pts'}
+            className="w-14 px-1.5 py-0.5 text-xs border border-white/20 bg-gray-800 text-white rounded text-center font-bold focus:outline-none focus:ring-1 focus:ring-violet-500"
+            onBlur={e => setBulkCategoryPoints(group.key, Math.max(0, parseInt(e.target.value) || 0))}
+            onKeyDown={e => {
+              if (e.key === 'Enter') setBulkCategoryPoints(group.key, Math.max(0, parseInt((e.target as HTMLInputElement).value) || 0))
+            }}
+            title={`Set points for all ${group.label} tasks`}
+          />
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
+        {group.tasks.map(task => (
+          <div key={task.id} className="rounded-2xl overflow-hidden flex flex-col shadow-sm"
+            style={{ backgroundColor: task.hex_code }}>
+            <div className="px-4 pt-4 pb-3 flex-1">
+              <p className="text-white/70 text-xs font-bold uppercase tracking-widest mb-1">{task.color}</p>
+              <h3 className="text-white font-black text-lg leading-tight">{task.title}</h3>
+              {editingCategoryId === task.id ? (
+                <select
+                  autoFocus
+                  defaultValue={task.category || ''}
+                  onChange={e => saveCategoryInline(task.id, e.target.value)}
+                  onBlur={() => setEditingCategoryId(null)}
+                  className="w-full bg-black/20 text-white text-xs px-2 py-1 rounded border border-white/30 focus:outline-none focus:border-white/60 mt-2"
+                >
+                  <option value="">— Uncategorized —</option>
+                  {categories.filter(c => c.section_id === task.section_id).map(c => (
+                    <option key={c.id} value={c.name}>{c.name}</option>
+                  ))}
+                  <option value="__new__">+ New category…</option>
+                </select>
+              ) : (
+                <button
+                  onClick={() => setEditingCategoryId(task.id)}
+                  className="mt-1.5 text-white/50 text-xs hover:text-white/80 transition-colors text-left block"
+                >
+                  {task.category ? `📂 ${task.category}` : '+ category'}
+                </button>
+              )}
+              <div className="flex items-center gap-2 mt-2">
+                <p className="text-white/50 text-xs">
+                  {scans.filter(s => s.task_id === task.id && s.completed).length} completed ·{' '}
+                  {scans.filter(s => s.task_id === task.id).length} scanned
+                </p>
+                {(task.points ?? 0) > 0 && (
+                  <span className="bg-black/50 text-white text-[10px] font-black rounded px-1.5 py-0.5 shadow shadow-black/30 ring-1 ring-white/20">
+                    {task.points} pts
+                  </span>
+                )}
+              </div>
+              <p className="text-white/40 text-xs mt-0.5">
+                {(() => {
+                  const n = boardCountByTask.get(task.id) ?? 0
+                  return n > 0 ? `✓ On ${n} board${n > 1 ? 's' : ''}` : 'Not on any board'
+                })()}
+              </p>
+            </div>
+            <div className="px-3 pb-3 flex flex-wrap gap-1.5">
+              <button onClick={() => navigate(`/bingo-dash/admin/task/${task.id}`)}
+                className="px-3 py-1.5 bg-white/20 rounded-lg text-white text-xs font-bold hover:bg-white/30 transition-colors">
+                Edit
+              </button>
+              <button onClick={() => setQrTask(task)}
+                className="px-3 py-1.5 bg-white/20 rounded-lg text-white text-xs font-bold hover:bg-white/30 transition-colors">
+                QR
+              </button>
+              <button onClick={() => copyLink(task.id)}
+                className="px-3 py-1.5 bg-white/20 rounded-lg text-white text-xs font-bold hover:bg-white/30 transition-colors">
+                {copiedId === task.id ? '✓' : '🔗'}
+              </button>
+              <button onClick={() => duplicateTask(task)}
+                className="px-3 py-1.5 bg-white/20 rounded-lg text-white text-xs font-bold hover:bg-white/30 transition-colors"
+                title="Duplicate this card in this section">
+                ⎘ Copy
+              </button>
+              <button onClick={() => openTileEdit(task)}
+                className="px-3 py-1.5 bg-white/20 rounded-lg text-white text-xs font-bold hover:bg-white/30 transition-colors"
+                title="Move to another section or category">
+                Move
+              </button>
+              <button onClick={() => deleteTask(task.id, task.title)}
+                className="px-3 py-1.5 bg-red-500/30 rounded-lg text-white text-xs font-bold hover:bg-red-500/50 transition-colors">
+                Delete
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// Remember which board the admin was editing across navigations (e.g. Preview → back)
+const ADMIN_SECTION_KEY = 'bingo-dash-admin-section-id'
+
+/**
+ * Explain a board write that didn't stick.
+ *
+ * The "tenant update" policy on bingo_sections requires BOTH
+ * can_use_game('bingo') AND bingo_can_write(owner_id). When either fails the
+ * UPDATE matches zero rows rather than raising, so Start game / Set live /
+ * timer changes used to fail completely silently and read as a dead button.
+ */
+function boardWriteFailureMessage(dbMessage?: string): string {
+  return [
+    "Couldn't save that change to the board.",
+    '',
+    'This usually means the account is not enabled for Bingo Dash — ask the',
+    'main account holder to open Accounts and check that it is Approved, that',
+    'the "Bingo Dash" toggle is ON, and that any temporary access has not expired.',
+    dbMessage ? `\nDatabase said: ${dbMessage}` : '',
+  ].join('\n')
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
+export function BingoDashAdmin() {
+  const navigate = useNavigate()
+  const { account, isOwner, workingOwnerValue, signOut } = useBingoAuth()
+  const uid = account?.id ?? null
+  // Tenancy convention: owner_id NULL = main-account (house) data. The hook
+  // resolves the working tenant: owner -> null, facilitator -> host tenant,
+  // sub -> own uid.
+  const myOwnerValue = workingOwnerValue
+  const isMineRow = (ownerId: string | null | undefined) =>
+    (ownerId ?? null) === myOwnerValue
+  const [tasks, setTasks] = useState<BingoTask[]>([])
+  const [boardCards, setBoardCards] = useState<BingoBoardCard[]>([])
+  const [teams, setTeams] = useState<BingoTeam[]>([])
+  const [scans, setScans] = useState<BingoScan[]>([])
+  const [sections, setSections] = useState<BingoSection[]>([])
+  const [categories, setCategories] = useState<BingoCategory[]>([])
+  const [challengeSections, setChallengeSections] = useState<BingoChallengeSection[]>([])
+  const [duels, setDuels] = useState<BingoDuel[]>([])
+  const [aitbImporting, setAitbImporting] = useState(false)
+  // Remembered board is namespaced per signed-in account so switching accounts
+  // on the same browser never inherits someone else's stale board id.
+  const sectionStorageKey = `${ADMIN_SECTION_KEY}:${uid ?? 'anon'}`
+  const [currentSectionId, setCurrentSectionId] = useState<string | null>(() => localStorage.getItem(sectionStorageKey))
+  // Per-account "live board" pointer (subs); the owner's pointer stays in the
+  // global bingo_settings row so the anonymous front-door pages keep working.
+  const [myActiveBoard, setMyActiveBoard] = useState<string | null>(account?.active_section_id ?? null)
+  // Owner-only: sub-account emails for the "Sub-account cards" library group.
+  const [accountEmails, setAccountEmails] = useState<Map<string, string>>(new Map())
+  const [showSectionManager, setShowSectionManager] = useState(false)
+  const [newSectionName, setNewSectionName] = useState('')
+  const [showInlineBoardCreate, setShowInlineBoardCreate] = useState(false)
+  const [inlineBoardName, setInlineBoardName] = useState('')
+  // Category management
+  const [showCategoryManager, setShowCategoryManager] = useState<string | null>(null) // section id or null
+  const [newCategoryName, setNewCategoryName] = useState('')
+  // Challenge section management (grouping above categories in the Board tab)
+  const [showChallengeSectionManager, setShowChallengeSectionManager] = useState(false)
+  const [newChallengeSectionName, setNewChallengeSectionName] = useState('')
+  const [renamingCSId, setRenamingCSId] = useState<string | null>(null)
+  const [renamingCSName, setRenamingCSName] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [showForm, setShowForm] = useState(false)
+  const [qrTask, setQrTask] = useState<BingoTask | null>(null)
+  const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [showJoinLink, setShowJoinLink] = useState(false)
+  const [joinLinkCopied, setJoinLinkCopied] = useState(false)
+  const [joinLinkTab, setJoinLinkTab] = useState<'player' | 'observer'>('player')
+
+  // Add challenge form
+  const [formTitle, setFormTitle] = useState('')
+  const [formColor, setFormColor] = useState('')
+  const [formHex, setFormHex] = useState('#3B82F6')
+  const [formCategory, setFormCategory] = useState('')
+  const [formPoints, setFormPoints] = useState(0)
+  const [formTaskType, setFormTaskType] = useState<'standard' | 'answer' | 'photo'>('standard')
+  const [formAnswerQuestion, setFormAnswerQuestion] = useState('')
+  const [formAnswerText, setFormAnswerText] = useState('')
+  const [formSaving, setFormSaving] = useState(false)
+
+  // Import
+  const [showImport, setShowImport] = useState(false)
+  const [importText, setImportText] = useState('')
+  const [importError, setImportError] = useState('')
+  const [importPreview, setImportPreview] = useState<ImportRow[] | null>(null)
+  const [importing, setImporting] = useState(false)
+
+  // Timer
+  const [settings, setSettings] = useState<BingoSettings | null>(null)
+  const [timerDisplay, setTimerDisplay] = useState('00:00')
+  const [timerMinutesInput, setTimerMinutesInput] = useState('')
+  const [timerSaving, setTimerSaving] = useState(false)
+
+  // Tile editor modal
+  const [editingTile, setEditingTile] = useState<BingoTask | null>(null)
+  const [tileTitle, setTileTitle] = useState('')
+  const [tileColor, setTileColor] = useState('')
+  const [tileHex, setTileHex] = useState('#3B82F6')
+  const [tileCategory, setTileCategory] = useState('')
+  const [tilePoints, setTilePoints] = useState(0)
+  const [tileSectionId, setTileSectionId] = useState<string>('')
+  const [tileTaskType, setTileTaskType] = useState<'standard' | 'answer' | 'photo'>('standard')
+  const [tileAnswerQuestion, setTileAnswerQuestion] = useState('')
+  const [tileAnswerText, setTileAnswerText] = useState('')
+  const [tileSaving, setTileSaving] = useState(false)
+
+  // Inline category picker on gallery cards (shows a <select> dropdown)
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null)
+
+  // Category filter for challenges gallery
+  const [categoryFilter, setCategoryFilter] = useState('all')
+
+  // Category filter for off-grid list
+  const [offGridCategoryFilter, setOffGridCategoryFilter] = useState('all')
+
+  // Cross-section card library filters (Add to Grid panel)
+  // 'current' = only this section's off-grid cards; 'all' = every section.
+  const [addListSectionFilter, setAddListSectionFilter] = useState<'current' | 'all' | string>('current')
+  const [addListSearch, setAddListSearch] = useState('')
+
+  // Drag state
+  const [dragState, setDragState] = useState<{ id: string; type: 'grid' | 'list' } | null>(null)
+  const [dragOverSlot, setDragOverSlot] = useState<number | null>(null)
+
+  // Slot picker: which empty grid slot is being filled via click
+  const [slotPickerIndex, setSlotPickerIndex] = useState<number | null>(null)
+  const [slotPickerFilter, setSlotPickerFilter] = useState('all')
+
+  // Tab navigation
+  const [activeTab, setActiveTab] = useState<'board' | 'library' | 'teams' | 'submissions'>('board')
+  const [submissionStatusFilter, setSubmissionStatusFilter] = useState<'pending' | 'approved' | 'rejected' | 'all'>('pending')
+  const [submissionBoardFilter, setSubmissionBoardFilter] = useState<'current' | 'all'>('all')
+
+  // Team grid viewer modal
+  const [viewingTeam, setViewingTeam] = useState<BingoTeam | null>(null)
+  // Per-team "live members link" share modal
+  const [membersLinkTeam, setMembersLinkTeam] = useState<BingoTeam | null>(null)
+  const [membersLinkCopied, setMembersLinkCopied] = useState(false)
+  // Per-team bonus-points breakdown popup: which team is open + its editable draft
+  const [bonusTeam, setBonusTeam] = useState<BingoTeam | null>(null)
+  const [bonusDraft, setBonusDraft] = useState<BonusItem[]>([])
+  const [bonusSaving, setBonusSaving] = useState(false)
+  // Section-wide "live teams link" share modal
+  const [showAllTeamsLink, setShowAllTeamsLink] = useState(false)
+  const [allTeamsLinkCopied, setAllTeamsLinkCopied] = useState(false)
+  const [members, setMembers] = useState<BingoMember[]>([])
+  const [photoSubmissions, setPhotoSubmissions] = useState<BingoPhotoSubmission[]>([])
+  const [selectedSubmissionIds, setSelectedSubmissionIds] = useState<Set<string>>(new Set())
+  const [bulkActioning, setBulkActioning] = useState(false)
+  const [newGroupName, setNewGroupName] = useState('')
+  const [newGroupPassword, setNewGroupPassword] = useState('')
+  const [uploadingTeamPhoto, setUploadingTeamPhoto] = useState<string | null>(null)
+  const [resettingGame, setResettingGame] = useState(false)
+  const [resettingTeams, setResettingTeams] = useState(false)
+
+  // Library: compartment filter
+  const [libraryCompartmentFilter, setLibraryCompartmentFilter] = useState<'all' | string>('all')
+
+  // ── Derived ────────────────────────────────────────────────────────────────
+  // Boards this account actually manages: house boards for the owner, own
+  // boards for subs. (For subs, `sections` also holds the owner's boards for
+  // library labels — those must never appear as manageable boards.)
+  const myBoards = sections.filter(s => isMineRow(s.owner_id))
+  // Which board is "live for players" from this account's point of view.
+  const activeBoardPointer = isOwner ? (settings?.active_section_id ?? null) : myActiveBoard
+  const scopedTasks = currentSectionId ? tasks.filter(t => t.section_id === currentSectionId) : []
+  const scopedTeams = currentSectionId
+    ? teams.filter(t => t.section_id === currentSectionId).sort((a, b) => a.name.localeCompare(b.name, undefined, { numeric: true }))
+    : []
+  // Cards are universal: grid membership lives in bingo_board_cards (one
+  // placement row per board the card sits on), not on the task itself.
+  const taskById = new Map(tasks.map(t => [t.id, t]))
+  const boardTasksForSection = (sectionId: string): BingoTask[] =>
+    boardCards
+      .filter(bc => bc.section_id === sectionId)
+      .map(bc => {
+        const t = taskById.get(bc.task_id)
+        return t ? { ...t, sort_order: bc.slot, in_grid: true } : null
+      })
+      .filter((t): t is BingoTask => t !== null)
+      .sort((a, b) => a.sort_order - b.sort_order)
+  const gridTasks = currentSectionId ? boardTasksForSection(currentSectionId) : []
+  // Contest bonuses won in duels, folded into each team's earned points.
+  const duelBonuses = duelBonusByTeam(duels)
+  const placedTaskIds = new Set(
+    currentSectionId ? boardCards.filter(bc => bc.section_id === currentSectionId).map(bc => bc.task_id) : [],
+  )
+  // How many boards each card sits on (for the "On N boards" labels).
+  const boardCountByTask = (() => {
+    const m = new Map<string, number>()
+    for (const bc of boardCards) m.set(bc.task_id, (m.get(bc.task_id) ?? 0) + 1)
+    return m
+  })()
+
+  // Sparse 25-slot layout: each placed task sits at slot = sort_order (0-24).
+  // Any legacy placement whose slot is out of range or colliding is placed in
+  // the next available slot so existing data migrates gracefully.
+  const gridSlots: (BingoTask | null)[] = (() => {
+    const slots: (BingoTask | null)[] = Array(25).fill(null)
+    const overflow: BingoTask[] = []
+    for (const t of gridTasks) {
+      const s = t.sort_order
+      if (Number.isInteger(s) && s >= 0 && s < 25 && slots[s] === null) slots[s] = t
+      else overflow.push(t)
+    }
+    for (const t of overflow) {
+      const i = slots.findIndex(x => x === null)
+      if (i !== -1) slots[i] = t
+    }
+    return slots
+  })()
+  const allCategories = [...new Set(scopedTasks.map(t => t.category).filter(Boolean))].sort() as string[]
+  // Timer + alarm + marshal password + photo toggle are per board (bingo_sections).
+  const currentBoard = sections.find(s => s.id === currentSectionId) ?? null
+  // Where THIS account's players actually land. /bingo-dash resolves its board
+  // from the single global bingo_settings pointer, which set_active_board only
+  // moves for the owner — so it always serves the house board. Sub accounts must
+  // use their own slug or they (and their players) get someone else's game.
+  const playerViewPath = myOwnerValue === null
+    ? '/bingo-dash'
+    : currentBoard ? `/bingo-dash/play/${currentBoard.slug}` : '/bingo-dash'
+  const isTimerRunning = !!currentBoard?.timer_end_at && new Date(currentBoard.timer_end_at) > new Date()
+
+  // Library view: candidates for "Add to Grid" across sections.
+  // Cards are universal — adding places the existing card on this board, no
+  // copying. A card is a candidate when it is NOT already on this board.
+  // In the "All sections" view, legacy duplicates from the old copy-per-board
+  // flow (same title) are collapsed to one entry: prefer this section's copy,
+  // otherwise the oldest (the original).
+  const addListTasks = (() => {
+    const search = addListSearch.trim().toLowerCase()
+    let list = tasks.filter(t => !placedTaskIds.has(t.id))
+    if (addListSectionFilter === 'current') list = list.filter(t => t.section_id === currentSectionId)
+    else if (addListSectionFilter !== 'all') list = list.filter(t => t.section_id === addListSectionFilter)
+    else {
+      const byTitle = new Map<string, BingoTask>()
+      for (const t of list) {
+        const key = t.title.trim().toLowerCase()
+        const kept = byTitle.get(key)
+        if (!kept) { byTitle.set(key, t); continue }
+        const tCurrent = t.section_id === currentSectionId
+        const keptCurrent = kept.section_id === currentSectionId
+        if ((tCurrent && !keptCurrent) || (tCurrent === keptCurrent && t.created_at < kept.created_at)) {
+          byTitle.set(key, t)
+        }
+      }
+      list = [...byTitle.values()]
+    }
+    if (offGridCategoryFilter !== 'all') list = list.filter(t => t.category === offGridCategoryFilter)
+    if (search) list = list.filter(t =>
+      t.title.toLowerCase().includes(search) ||
+      (t.category ?? '').toLowerCase().includes(search) ||
+      (t.color ?? '').toLowerCase().includes(search)
+    )
+    return list.sort((a, b) => a.title.localeCompare(b.title))
+  })()
+
+  const addListCategories = (() => {
+    let base = tasks.filter(t => !placedTaskIds.has(t.id))
+    if (addListSectionFilter === 'current') base = base.filter(t => t.section_id === currentSectionId)
+    else if (addListSectionFilter !== 'all') base = base.filter(t => t.section_id === addListSectionFilter)
+    return [...new Set(base.map(t => t.category).filter(Boolean))].sort() as string[]
+  })()
+
+  const filteredTasks = categoryFilter === 'all'
+    ? scopedTasks
+    : categoryFilter === '__none__'
+      ? scopedTasks.filter(t => !t.category)
+      : scopedTasks.filter(t => t.category === categoryFilter)
+
+  // Group filtered tasks by category for the gallery
+  const groupedTasks = (() => {
+    if (categoryFilter !== 'all') {
+      const label = categoryFilter === '__none__' ? 'Uncategorized' : categoryFilter
+      return [{ label, key: categoryFilter, tasks: filteredTasks }]
+    }
+    const byCategory = new Map<string, BingoTask[]>()
+    const uncategorized: BingoTask[] = []
+    for (const task of scopedTasks) {
+      if (!task.category) { uncategorized.push(task); continue }
+      if (!byCategory.has(task.category)) byCategory.set(task.category, [])
+      byCategory.get(task.category)!.push(task)
+    }
+    const groups = [...byCategory.keys()].sort().map(cat => ({ label: cat, key: cat, tasks: byCategory.get(cat)! }))
+    if (uncategorized.length > 0) groups.push({ label: 'Uncategorized', key: '__none__', tasks: uncategorized })
+    return groups
+  })()
+
+  // Group tasks by challenge section → category (for the Board tab gallery)
+  const groupedByChallengeSections = (() => {
+    const scopedCS = challengeSections
+      .filter(cs => cs.game_section_id === currentSectionId)
+      .sort((a, b) => a.sort_order - b.sort_order)
+    const scopedCats = categories.filter(c => c.section_id === currentSectionId)
+
+    const catTaskGroups = (catName: string) => scopedTasks.filter(t => t.category === catName)
+
+    type CatGroup = { label: string; key: string; tasks: BingoTask[] }
+    type CSGroup = { cs: BingoChallengeSection | null; groups: CatGroup[] }
+    const result: CSGroup[] = []
+
+    for (const cs of scopedCS) {
+      const csCats = scopedCats.filter(c => c.challenge_section_id === cs.id)
+      const groups = csCats
+        .map(cat => ({ label: cat.name, key: cat.name, tasks: catTaskGroups(cat.name) }))
+        .sort((a, b) => a.label.localeCompare(b.label))
+      result.push({ cs, groups })
+    }
+
+    // Unassigned: categories not linked to any challenge section + tasks with no category
+    const unassignedCats = scopedCats.filter(c => !c.challenge_section_id)
+    const unassignedGroups: CatGroup[] = unassignedCats
+      .map(cat => ({ label: cat.name, key: cat.name, tasks: catTaskGroups(cat.name) }))
+      .sort((a, b) => a.label.localeCompare(b.label))
+    const noCategory = scopedTasks.filter(t => !t.category)
+    if (noCategory.length > 0) unassignedGroups.push({ label: 'Uncategorized', key: '__none__', tasks: noCategory })
+    if (unassignedGroups.length > 0 || scopedCS.length === 0) {
+      result.push({ cs: null, groups: unassignedGroups })
+    }
+
+    return result
+  })()
+
+  // Library: Compartment > Category > Cards.
+  // "Mine" groups are this account's own compartments (editable). Foreign
+  // groups follow: subs see the main account's shared cards; the owner sees a
+  // "Sub-account cards" group per sub account. Foreign cards are read-only —
+  // placing one on a board creates an independent copy (copy-on-use).
+  const groupedLibrary = (() => {
+    const byCategory = (list: BingoTask[]) => {
+      const map = new Map<string, BingoTask[]>()
+      const uncategorized: BingoTask[] = []
+      for (const task of list) {
+        if (!task.category) { uncategorized.push(task); continue }
+        if (!map.has(task.category)) map.set(task.category, [])
+        map.get(task.category)!.push(task)
+      }
+      const cats = [...map.keys()].sort().map(cat => ({
+        label: cat, key: cat, tasks: map.get(cat)!.sort((a, b) => a.title.localeCompare(b.title)),
+      }))
+      if (uncategorized.length > 0) cats.push({ label: 'Uncategorized', key: '__none__', tasks: uncategorized })
+      return cats
+    }
+
+    const mineSections = libraryCompartmentFilter === 'all'
+      ? myBoards
+      : myBoards.filter(s => s.id === libraryCompartmentFilter)
+    const groups = mineSections.map(section => {
+      const sectionTasks = tasks.filter(t => t.section_id === section.id && isMineRow(t.owner_id))
+      return { section: { id: section.id, name: section.name, foreign: false }, categories: byCategory(sectionTasks), totalTasks: sectionTasks.length }
+    })
+
+    if (libraryCompartmentFilter !== 'all') return groups
+
+    if (isOwner) {
+      const byAccount = new Map<string, BingoTask[]>()
+      for (const t of tasks) {
+        if (!t.owner_id) continue
+        if (!byAccount.has(t.owner_id)) byAccount.set(t.owner_id, [])
+        byAccount.get(t.owner_id)!.push(t)
+      }
+      for (const [ownerId, list] of byAccount) {
+        groups.push({
+          section: { id: `sub:${ownerId}`, name: `Sub-account cards — ${accountEmails.get(ownerId) ?? ownerId.slice(0, 8)}`, foreign: true },
+          categories: byCategory(list),
+          totalTasks: list.length,
+        })
+      }
+    } else if (myOwnerValue !== null) {
+      // House shared library — skipped for a facilitator working on house
+      // data (myOwnerValue null): those sections already ARE their boards.
+      for (const section of sections.filter(s => s.owner_id === null)) {
+        const list = tasks.filter(t => t.section_id === section.id && t.owner_id === null)
+        if (list.length === 0) continue
+        groups.push({
+          section: { id: `house:${section.id}`, name: `Main library — ${section.name}`, foreign: true },
+          categories: byCategory(list),
+          totalTasks: list.length,
+        })
+      }
+    }
+    return groups
+  })()
+
+  // ── Data fetching ──────────────────────────────────────────────────────────
+  // Two-stage, tenancy-scoped fetch (hub model):
+  //  - owner: all sections + tasks (needs sub content for the shared library),
+  //    but gameplay data only for house boards
+  //  - sub: own sections + own tasks + the owner's shared (house) tasks;
+  //    gameplay data only for their own boards
+  const fetchAll = useCallback(async () => {
+    // Stage 1: boards + cards + per-board config.
+    // Non-owner scope is the WORKING tenant: a sub (or facilitator of a sub)
+    // fetches that tenant's rows plus the house shared library; a facilitator
+    // of the owner works on house data directly, so house rows only.
+    const orMine = `owner_id.eq.${myOwnerValue},owner_id.is.null`
+    const [sectionsRes, tasksRes] = await Promise.all([
+      isOwner
+        ? supabase.from('bingo_sections').select('*').order('sort_order')
+        : myOwnerValue === null
+          ? supabase.from('bingo_sections').select('*').is('owner_id', null).order('sort_order')
+          : supabase.from('bingo_sections').select('*').or(orMine).order('sort_order'),
+      isOwner
+        ? supabase.from('bingo_tasks').select('*').order('sort_order')
+        : myOwnerValue === null
+          ? supabase.from('bingo_tasks').select('*').is('owner_id', null).order('sort_order')
+          : supabase.from('bingo_tasks').select('*').or(orMine).order('sort_order'),
+    ])
+    const allSections = (sectionsRes.data ?? []) as BingoSection[]
+    const mineSections = allSections.filter(s => isMineRow(s.owner_id))
+    const mySectionIds = mineSections.map(s => s.id)
+
+    // Stage 2: everything keyed to my boards (teams first — scans/photo
+    // submissions have no section_id and hang off the team).
+    const [boardCardsData, teamsData, categoriesData, challengeSectionsData, accountsData] = await Promise.all([
+      isOwner
+        ? supabase.from('bingo_board_cards').select('*').order('slot').then(r => r.data ?? [])
+        : fetchInChunks<BingoBoardCard>('bingo_board_cards', 'section_id', mySectionIds),
+      fetchInChunks<BingoTeam>('bingo_teams', 'section_id', mySectionIds),
+      isOwner
+        ? supabase.from('bingo_categories').select('*').order('sort_order').then(r => r.data ?? [])
+        : fetchInChunks<BingoCategory>('bingo_categories', 'section_id', mySectionIds),
+      isOwner
+        ? supabase.from('bingo_challenge_sections').select('*').order('sort_order').then(r => r.data ?? [])
+        : fetchInChunks<BingoChallengeSection>('bingo_challenge_sections', 'game_section_id', mySectionIds),
+      isOwner
+        ? supabase.from('bingo_accounts').select('id, email').then(r => r.data ?? [])
+        : Promise.resolve([] as { id: string; email: string | null }[]),
+    ])
+    const myTeamIds = teamsData.map(t => t.id)
+    const [scansData, membersData, photoSubsData, duelsData] = await Promise.all([
+      fetchInChunks<BingoScan>('bingo_scans', 'team_id', myTeamIds),
+      fetchInChunks<BingoMember>('bingo_members', 'section_id', mySectionIds),
+      fetchInChunks<BingoPhotoSubmission>('bingo_photo_submissions', 'team_id', myTeamIds),
+      fetchInChunks<BingoDuel>('bingo_duels', 'section_id', mySectionIds),
+    ])
+
+    setSections(allSections)
+    setTasks((tasksRes.data ?? []) as BingoTask[])
+    setBoardCards(boardCardsData.sort((a, b) => a.slot - b.slot))
+    setTeams(teamsData.sort((a, b) => a.created_at.localeCompare(b.created_at)))
+    setScans(scansData)
+    setCategories(categoriesData.sort((a, b) => a.sort_order - b.sort_order))
+    setChallengeSections(challengeSectionsData.sort((a, b) => a.sort_order - b.sort_order))
+    setMembers(membersData.sort((a, b) => a.created_at.localeCompare(b.created_at)))
+    setPhotoSubmissions(photoSubsData.sort((a, b) => b.created_at.localeCompare(a.created_at)))
+    setDuels(duelsData.sort((a, b) => b.created_at.localeCompare(a.created_at)))
+    if (isOwner) setAccountEmails(new Map(accountsData.map(a => [a.id, a.email ?? a.id])))
+    // Keep the remembered board if it's still one of MINE; otherwise fall back
+    // to my first board (never someone else's).
+    setCurrentSectionId(prev =>
+      prev && mineSections.some(s => s.id === prev) ? prev : mineSections[0]?.id ?? null
+    )
+    setLoading(false)
+  }, [isOwner, uid, myOwnerValue]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Persist the selected board so returning from Preview / task edit restores it
+  useEffect(() => {
+    if (currentSectionId) localStorage.setItem(sectionStorageKey, currentSectionId)
+  }, [currentSectionId, sectionStorageKey])
+
+  // ── Section CRUD ──────────────────────────────────────────────────────────
+  const slugify = (s: string) => s.toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+
+  const createSection = async (overrideName?: string) => {
+    const name = (overrideName ?? newSectionName).trim()
+    if (!name) return
+    const baseSlug = slugify(name) || `section-${Date.now()}`
+    let slug = baseSlug
+    let i = 2
+    while (sections.some(s => s.slug === slug)) { slug = `${baseSlug}-${i++}` }
+    const maxOrder = myBoards.reduce((m, s) => Math.max(m, s.sort_order), -1)
+    let { data, error } = await supabase.from('bingo_sections')
+      .insert({ name, slug, sort_order: maxOrder + 1, owner_id: myOwnerValue })
+      .select().single()
+    if (error) {
+      // Slugs are globally unique across accounts and other accounts' boards
+      // aren't visible here — retry once with a random suffix on collision.
+      const retry = await supabase.from('bingo_sections')
+        .insert({ name, slug: `${baseSlug}-${Math.random().toString(36).slice(2, 6)}`, sort_order: maxOrder + 1, owner_id: myOwnerValue })
+        .select().single()
+      data = retry.data; error = retry.error
+    }
+    if (error || !data) { alert('Failed to create section'); return }
+    setSections(prev => [...prev, data])
+    setCurrentSectionId(data.id)
+    if (overrideName) setInlineBoardName('')
+    else setNewSectionName('')
+  }
+
+  const renameSection = async (id: string, name: string) => {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    setSections(prev => prev.map(s => s.id === id ? { ...s, name: trimmed } : s))
+    await supabase.from('bingo_sections').update({ name: trimmed }).eq('id', id)
+  }
+
+  const deleteSection = async (id: string) => {
+    const section = sections.find(s => s.id === id)
+    if (!section) return
+    if (myBoards.length <= 1) { alert('Cannot delete the last section.'); return }
+    const taskCount = tasks.filter(t => t.section_id === id).length
+    const teamCount = teams.filter(t => t.section_id === id).length
+    if (!confirm(`Delete "${section.name}"? This will remove ${taskCount} challenges and ${teamCount} teams.`)) return
+    await supabase.from('bingo_sections').delete().eq('id', id)
+    const remaining = sections.filter(s => s.id !== id)
+    setSections(remaining)
+    if (currentSectionId === id) setCurrentSectionId(remaining[0]?.id ?? null)
+    await fetchAll()
+  }
+
+  // ── Category CRUD ─────────────────────────────────────────────────────────
+  const createCategoryByName = async (sectionId: string, rawName: string): Promise<BingoCategory | null> => {
+    const name = rawName.trim()
+    if (!name || !sectionId) return null
+    const existing = categories.find(c => c.section_id === sectionId && c.name === name)
+    if (existing) return existing
+    const maxOrder = categories.filter(c => c.section_id === sectionId)
+      .reduce((m, c) => Math.max(m, c.sort_order), -1)
+    const { data, error } = await supabase.from('bingo_categories')
+      .insert({ section_id: sectionId, name, sort_order: maxOrder + 1 })
+      .select().single()
+    if (error || !data) { alert('Failed to create category'); return null }
+    setCategories(prev => [...prev, data])
+    return data
+  }
+
+  const createCategory = async (sectionId: string) => {
+    const created = await createCategoryByName(sectionId, newCategoryName)
+    if (created) setNewCategoryName('')
+  }
+
+  // Handle the "+ New category…" sentinel from category <select>s.
+  // Returns the chosen category name, or null if the user cancelled.
+  const promptAndCreateCategory = async (sectionId: string): Promise<string | null> => {
+    const raw = window.prompt('New category name:')
+    if (!raw || !raw.trim()) return null
+    const cat = await createCategoryByName(sectionId, raw)
+    return cat?.name ?? null
+  }
+
+  const renameCategory = async (id: string, sectionId: string, newName: string) => {
+    const trimmed = newName.trim()
+    if (!trimmed) return
+    const old = categories.find(c => c.id === id)
+    if (!old || old.name === trimmed) return
+    if (categories.some(c => c.section_id === sectionId && c.name === trimmed && c.id !== id)) {
+      alert(`Category "${trimmed}" already exists.`)
+      return
+    }
+    // Update category name and cascade to all tasks in this section that reference it
+    setCategories(prev => prev.map(c => c.id === id ? { ...c, name: trimmed } : c))
+    setTasks(prev => prev.map(t =>
+      t.section_id === sectionId && t.category === old.name ? { ...t, category: trimmed } : t
+    ))
+    await supabase.from('bingo_categories').update({ name: trimmed }).eq('id', id)
+    await supabase.from('bingo_tasks')
+      .update({ category: trimmed })
+      .eq('section_id', sectionId)
+      .eq('category', old.name)
+  }
+
+  // Rename a category from the Board tab gallery header (resolves name → id)
+  const renameCategoryByLabel = async (label: string, newName: string) => {
+    if (!currentSectionId) return
+    const trimmed = newName.trim()
+    if (!trimmed || trimmed === label) return
+    const cat = categories.find(c => c.section_id === currentSectionId && c.name === label)
+    if (!cat) return
+    await renameCategory(cat.id, currentSectionId, trimmed)
+    // Keep the active category filter pointing at the renamed category
+    if (categoryFilter === label) setCategoryFilter(trimmed)
+    if (offGridCategoryFilter === label) setOffGridCategoryFilter(trimmed)
+  }
+
+  const deleteCategory = async (id: string, sectionId: string) => {
+    const cat = categories.find(c => c.id === id)
+    if (!cat) return
+    const affected = tasks.filter(t => t.section_id === sectionId && t.category === cat.name).length
+    if (!confirm(`Delete category "${cat.name}"? ${affected > 0 ? `${affected} card${affected !== 1 ? 's' : ''} will become uncategorized.` : ''}`)) return
+    setCategories(prev => prev.filter(c => c.id !== id))
+    setTasks(prev => prev.map(t =>
+      t.section_id === sectionId && t.category === cat.name ? { ...t, category: '' } : t
+    ))
+    await supabase.from('bingo_categories').delete().eq('id', id)
+    if (affected > 0) {
+      await supabase.from('bingo_tasks')
+        .update({ category: '' })
+        .eq('section_id', sectionId)
+        .eq('category', cat.name)
+    }
+  }
+
+  // Pull the 10 AI Team Building activities into this board's library as a
+  // "Special" section. Idempotent — safe to press twice.
+
+
+  // ── Challenge section CRUD (groupings above categories in Board tab) ──────────
+  const createChallengeSection = async () => {
+    const name = newChallengeSectionName.trim()
+    if (!name || !currentSectionId) return
+    const maxOrder = challengeSections.filter(cs => cs.game_section_id === currentSectionId)
+      .reduce((m, cs) => Math.max(m, cs.sort_order), -1)
+    const { data, error } = await supabase.from('bingo_challenge_sections')
+      .insert({ game_section_id: currentSectionId, name, sort_order: maxOrder + 1 })
+      .select().single()
+    if (error || !data) { alert('Failed to create section'); return }
+    setChallengeSections(prev => [...prev, data])
+    setNewChallengeSectionName('')
+  }
+
+  const renameChallengeSection = async (id: string, newName: string) => {
+    const trimmed = newName.trim()
+    if (!trimmed) return
+    setChallengeSections(prev => prev.map(cs => cs.id === id ? { ...cs, name: trimmed } : cs))
+    await supabase.from('bingo_challenge_sections').update({ name: trimmed }).eq('id', id)
+    setRenamingCSId(null)
+  }
+
+  const deleteChallengeSection = async (id: string) => {
+    const cs = challengeSections.find(s => s.id === id)
+    if (!cs) return
+    const catCount = categories.filter(c => c.challenge_section_id === id).length
+    if (!confirm(`Delete section "${cs.name}"?${catCount > 0 ? ` ${catCount} categor${catCount !== 1 ? 'ies' : 'y'} will become unassigned.` : ''}`)) return
+    setChallengeSections(prev => prev.filter(s => s.id !== id))
+    setCategories(prev => prev.map(c => c.challenge_section_id === id ? { ...c, challenge_section_id: null } : c))
+    await supabase.from('bingo_challenge_sections').delete().eq('id', id)
+  }
+
+  const assignCategoryToSection = async (catId: string, challengeSectionId: string | null) => {
+    setCategories(prev => prev.map(c => c.id === catId ? { ...c, challenge_section_id: challengeSectionId } : c))
+    await supabase.from('bingo_categories').update({ challenge_section_id: challengeSectionId }).eq('id', catId)
+  }
+
+  // Per-account active board: the RPC validates ownership server-side and,
+  // only for the owner, also moves the global bingo_settings pointer that the
+  // anonymous front-door pages read. Subs never touch the global pointer.
+  const setActiveSection = async (id: string) => {
+    if (isOwner) setSettings(prev => prev ? { ...prev, active_section_id: id } : prev)
+    setMyActiveBoard(id)
+    const { error } = await supabase.rpc('set_active_board', { p_section: id })
+    if (error) alert('Failed to set the live board — has the accounts migration been run in Supabase?')
+  }
+
+  // Save the per-board note shown below the bingo board on the player page
+  const saveBoardNote = async () => {
+    const sec = sections.find(s => s.id === currentSectionId)
+    if (!sec) return
+    const { error } = await supabase.from('bingo_sections')
+      .update({ board_note: sec.board_note ?? '', board_note_every: sec.board_note_every ?? 2 })
+      .eq('id', sec.id)
+    if (error) alert('Failed to save note — has the board_note migration been run in Supabase?')
+  }
+
+  const toggleSectionGameStarted = async (sectionId: string, started: boolean) => {
+    // Snapshot for rollback: the UI flips optimistically, so a write the
+    // database rejects would otherwise show as LIVE until the next refetch.
+    const prevSections = sections
+    if (started) {
+      // Start the countdown with the game. A board with time on the clock that
+      // is not already running gets its timer_end_at set here, so the
+      // facilitator does not have to remember a second button at the whistle.
+      const board = sections.find(s => s.id === sectionId)
+      const alreadyRunning = !!board?.timer_end_at && new Date(board.timer_end_at).getTime() > Date.now()
+      const startPatch: Partial<BingoSection> = { game_started: true }
+      if (!alreadyRunning && (board?.timer_seconds ?? 0) > 0) {
+        startPatch.timer_end_at = new Date(Date.now() + (board!.timer_seconds ?? 0) * 1000).toISOString()
+      }
+      // Lock every other board OF THIS ACCOUNT and make this one live for its
+      // players. Other accounts' boards are never touched.
+      setSections(prev => prev.map(s => isMineRow(s.owner_id)
+        ? (s.id === sectionId ? { ...s, ...startPatch } : { ...s, game_started: false })
+        : s))
+      if (isOwner) setSettings(prev => prev ? { ...prev, active_section_id: sectionId } : prev)
+      setMyActiveBoard(sectionId)
+      const otherIds = myBoards.filter(s => s.id !== sectionId && s.game_started).map(s => s.id)
+      const [liveRes, othersRes, rpcRes] = await Promise.all([
+        supabase.from('bingo_sections').update(startPatch).eq('id', sectionId).select('id'),
+        otherIds.length > 0
+          ? supabase.from('bingo_sections').update({ game_started: false }).in('id', otherIds).select('id')
+          : Promise.resolve({ error: null, data: [] as { id: string }[] }),
+        supabase.rpc('set_active_board', { p_section: sectionId }),
+      ])
+      // Zero rows updated means RLS refused it — that is the failure to report,
+      // not just a thrown error.
+      const failure = liveRes.error ?? othersRes.error ?? rpcRes.error
+      if (failure || liveRes.data?.length !== 1) {
+        setSections(prevSections)
+        alert(boardWriteFailureMessage(failure?.message))
+      }
+    } else {
+      setSections(prev => prev.map(s => s.id === sectionId ? { ...s, game_started: false } : s))
+      const { data, error } = await supabase
+        .from('bingo_sections').update({ game_started: false }).eq('id', sectionId).select('id')
+      if (error || data?.length !== 1) {
+        setSections(prevSections)
+        alert(boardWriteFailureMessage(error?.message))
+      }
+    }
+  }
+
+  const fetchSettings = useCallback(async () => {
+    const { data } = await supabase.from('bingo_settings').select('*').eq('id', 'main').single()
+    if (data) setSettings(data)
+  }, [])
+
+  useEffect(() => { fetchAll(); fetchSettings() }, [fetchAll, fetchSettings])
+
+  // Real-time timer sync (global settings row — owner-only concern)
+  useEffect(() => {
+    if (!isOwner) return
+    const channel = supabase
+      .channel('bingo-settings-admin')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bingo_settings' }, fetchSettings)
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [fetchSettings, isOwner])
+
+  // Real-time section game_started sync
+  useEffect(() => {
+    const channel = supabase
+      .channel('bingo-sections-admin')
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'bingo_sections' }, ({ new: updated }) => {
+        setSections(prev => prev.map(s => s.id === updated.id ? { ...s, ...updated } as typeof s : s))
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [])
+
+  // Real-time photo submissions sync — without this, new uploads don't appear until the admin refreshes.
+  // Realtime events arrive for EVERY account's submissions, so inserts are
+  // filtered to teams on this account's boards (updates/deletes merge by id,
+  // which is already scoped since state only ever holds this account's rows).
+  const myTeamIdsRef = useRef<Set<string>>(new Set())
+  useEffect(() => { myTeamIdsRef.current = new Set(teams.map(t => t.id)) }, [teams])
+  useEffect(() => {
+    const channel = supabase
+      .channel('bingo-submissions-admin')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'bingo_photo_submissions' }, ({ new: row }) => {
+        const sub = row as BingoPhotoSubmission
+        if (!myTeamIdsRef.current.has(sub.team_id)) return
+        setPhotoSubmissions(prev => prev.some(s => s.id === sub.id) ? prev : [sub, ...prev])
+      })
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'bingo_photo_submissions' }, ({ new: row }) => {
+        const sub = row as BingoPhotoSubmission
+        setPhotoSubmissions(prev => prev.map(s => s.id === sub.id ? sub : s))
+      })
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'bingo_photo_submissions' }, ({ old: row }) => {
+        const sub = row as BingoPhotoSubmission
+        setPhotoSubmissions(prev => prev.filter(s => s.id !== sub.id))
+      })
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [])
+
+  // Countdown tick
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (!currentBoard) { setTimerDisplay('00:00'); return }
+      if (currentBoard.timer_end_at) {
+        setTimerDisplay(formatTime((new Date(currentBoard.timer_end_at).getTime() - Date.now()) / 1000))
+      } else {
+        setTimerDisplay(formatTime(currentBoard.timer_seconds ?? 0))
+      }
+    }, 250)
+    return () => clearInterval(id)
+  }, [currentBoard?.timer_end_at, currentBoard?.timer_seconds]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Timer actions (per board — writes the selected bingo_sections row) ─────
+  const updateBoardSettings = async (patch: Partial<Omit<BingoSection, 'id' | 'created_at'>>) => {
+    if (!currentSectionId) return
+    setTimerSaving(true)
+    try {
+      const { data, error } = await supabase.from('bingo_sections').update(patch).eq('id', currentSectionId).select().single()
+      if (data) { setSections(prev => prev.map(s => s.id === data.id ? data : s)); return }
+      // A row-level-security rejection is not an error here — the UPDATE simply
+      // matches zero rows, so .single() fails and the change vanishes silently.
+      // Say so out loud instead: this is what made the timer look broken.
+      alert(boardWriteFailureMessage(error?.message))
+    } finally { setTimerSaving(false) }
+  }
+
+  const adjustTimer = (deltaMinutes: number) => {
+    if (!currentBoard) return
+    const delta = deltaMinutes * 60
+    if (isTimerRunning && currentBoard.timer_end_at) {
+      updateBoardSettings({ timer_end_at: new Date(new Date(currentBoard.timer_end_at).getTime() + delta * 1000).toISOString() })
+    } else {
+      updateBoardSettings({ timer_seconds: Math.max(0, (currentBoard.timer_seconds ?? 0) + delta) })
+    }
+  }
+
+  const setTimerFromInput = () => {
+    const mins = parseFloat(timerMinutesInput)
+    if (isNaN(mins) || mins < 0) return
+    const seconds = Math.round(mins * 60)
+    if (isTimerRunning) {
+      updateBoardSettings({ timer_end_at: new Date(Date.now() + seconds * 1000).toISOString(), timer_seconds: seconds })
+    } else {
+      updateBoardSettings({ timer_seconds: seconds })
+    }
+    setTimerMinutesInput('')
+  }
+
+  const startTimer = () => {
+    if (!currentBoard?.timer_seconds) return
+    updateBoardSettings({ timer_end_at: new Date(Date.now() + currentBoard.timer_seconds * 1000).toISOString() })
+  }
+
+  const pauseTimer = () => {
+    if (!currentBoard?.timer_end_at) return
+    const remaining = Math.max(0, Math.round((new Date(currentBoard.timer_end_at).getTime() - Date.now()) / 1000))
+    updateBoardSettings({ timer_seconds: remaining, timer_end_at: null })
+  }
+
+  const resetTimer = () => updateBoardSettings({ timer_end_at: null })
+
+  // ── Board grid actions ─────────────────────────────────────────────────────
+  // Grid membership lives in bingo_board_cards: one placement row per
+  // (board, card). The card itself is never copied or mutated.
+
+  // Persist a 25-slot layout for the current board: placement.slot = slot index.
+  const applySlots = async (slots: (BingoTask | null)[]) => {
+    if (!currentSectionId) return
+    const updates: { task_id: string; slot: number }[] = []
+    slots.forEach((t, i) => { if (t) updates.push({ task_id: t.id, slot: i }) })
+    setBoardCards(prev => prev.map(bc => {
+      if (bc.section_id !== currentSectionId) return bc
+      const u = updates.find(x => x.task_id === bc.task_id)
+      return u ? { ...bc, slot: u.slot } : bc
+    }))
+    await Promise.all(updates.map(u =>
+      supabase.from('bingo_board_cards').update({ slot: u.slot })
+        .eq('section_id', currentSectionId).eq('task_id', u.task_id),
+    ))
+  }
+
+  // Swap (or move-to-empty) between two slot indices. Leaves all other tiles untouched.
+  const reorderGrid = async (fromSlot: number, toSlot: number) => {
+    if (fromSlot === toSlot || fromSlot < 0 || toSlot < 0 || fromSlot > 24 || toSlot > 24) return
+    const slots = [...gridSlots]
+    ;[slots[fromSlot], slots[toSlot]] = [slots[toSlot], slots[fromSlot]]
+    await applySlots(slots)
+  }
+
+  // Deep-copy a card (task + instruction pages + photos + links) into one of
+  // this account's compartments. Used for copy-on-use (placing another
+  // account's card) and for manual duplication.
+  const copyTaskFull = async (task: BingoTask, opts: { sectionId: string; title?: string; clonedFrom?: string | null }): Promise<BingoTask> => {
+    const [pagesRes, photosRes, linksRes] = await Promise.all([
+      supabase.from('bingo_task_pages').select('*').eq('task_id', task.id).order('page_order'),
+      supabase.from('bingo_task_photos').select('*').eq('task_id', task.id).order('photo_order'),
+      supabase.from('bingo_task_links').select('*').eq('task_id', task.id).order('sort_order'),
+    ])
+    const { data: created, error } = await supabase.from('bingo_tasks').insert({
+      section_id: opts.sectionId,
+      owner_id: myOwnerValue,
+      cloned_from: opts.clonedFrom !== undefined ? opts.clonedFrom : task.id,
+      title: opts.title ?? task.title,
+      color: task.color, hex_code: task.hex_code, category: task.category,
+      points: task.points, in_grid: false,
+      task_type: task.task_type,
+      answer_question: task.answer_question, answer_text: task.answer_text,
+      completion_warning: task.completion_warning, require_marshal: task.require_marshal,
+      maps_url: task.maps_url, maps_label: task.maps_label,
+      // Contending settings travel with the card — a copied contest card that
+      // silently reverted to a solo task would be a nasty surprise mid-event.
+      is_contest: task.is_contest, contest_game: task.contest_game,
+      contest_bonus: task.contest_bonus,
+      sort_order: Math.max(25, tasks.filter(t => t.section_id === opts.sectionId).length + 25),
+    }).select().single()
+    if (error || !created) throw new Error(error?.message ?? 'Failed to copy card')
+    const reparent = <T extends { id: string; task_id: string; created_at: string }>(rows: T[]) =>
+      rows.map(({ id, task_id, created_at, ...rest }) => {
+        void id; void task_id; void created_at
+        return { ...rest, task_id: created.id }
+      })
+    await Promise.all([
+      pagesRes.data?.length ? supabase.from('bingo_task_pages').insert(reparent(pagesRes.data)) : Promise.resolve(),
+      photosRes.data?.length ? supabase.from('bingo_task_photos').insert(reparent(photosRes.data)) : Promise.resolve(),
+      linksRes.data?.length ? supabase.from('bingo_task_links').insert(reparent(linksRes.data)) : Promise.resolve(),
+    ])
+    setTasks(prev => [...prev, created])
+    return created as BingoTask
+  }
+
+  // Copy-on-use: placing another account's card never places the original —
+  // it places (and if needed first creates) this account's own copy, so the
+  // card owner editing or deleting theirs can never touch a live board here.
+  const resolveOwnTaskForPlacement = async (taskId: string): Promise<string | null> => {
+    const task = tasks.find(t => t.id === taskId)
+    if (!task || isMineRow(task.owner_id)) return taskId
+    const existing = tasks.find(t => t.cloned_from === task.id && isMineRow(t.owner_id))
+    if (existing) return existing.id
+    if (!currentSectionId) return null
+    try {
+      const copy = await copyTaskFull(task, { sectionId: currentSectionId })
+      return copy.id
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Failed to copy card')
+      return null
+    }
+  }
+
+  // Place a card at the exact slot the user chose. If that slot is taken,
+  // fall back to the first empty slot so we never silently overwrite.
+  const insertIntoGrid = async (taskId: string, atIndex: number) => {
+    if (!currentSectionId) return
+    const resolvedId = await resolveOwnTaskForPlacement(taskId)
+    if (!resolvedId || placedTaskIds.has(resolvedId)) return
+    let target = atIndex
+    if (target < 0 || target >= 25 || gridSlots[target] !== null) {
+      target = gridSlots.findIndex(s => s === null)
+      if (target === -1) return
+    }
+    const { data: created, error } = await supabase.from('bingo_board_cards')
+      .insert({ section_id: currentSectionId, task_id: resolvedId, slot: target })
+      .select().single()
+    if (error || !created) { alert('Failed to add card to board'); return }
+    setBoardCards(prev => [...prev, created])
+  }
+
+  const removeTile = async (taskId: string) => {
+    if (!currentSectionId) return
+    setBoardCards(prev => prev.filter(bc => !(bc.section_id === currentSectionId && bc.task_id === taskId)))
+    await supabase.from('bingo_board_cards').delete()
+      .eq('section_id', currentSectionId).eq('task_id', taskId)
+  }
+
+  // ── Drag handlers ──────────────────────────────────────────────────────────
+  const onGridDragStart = (e: React.DragEvent, taskId: string) => {
+    e.dataTransfer.effectAllowed = 'move'
+    e.dataTransfer.setData('text/plain', taskId)
+    setDragState({ id: taskId, type: 'grid' })
+  }
+
+  const onListDragStart = (e: React.DragEvent, taskId: string) => {
+    e.dataTransfer.effectAllowed = 'copy'
+    e.dataTransfer.setData('text/plain', taskId)
+    setDragState({ id: taskId, type: 'list' })
+  }
+
+  const onSlotDragOver = (e: React.DragEvent, slotIndex: number) => {
+    e.preventDefault()
+    e.dataTransfer.dropEffect = dragState?.type === 'grid' ? 'move' : 'copy'
+    setDragOverSlot(slotIndex)
+  }
+
+  const onSlotDrop = async (e: React.DragEvent, slotIndex: number) => {
+    e.preventDefault()
+    setDragOverSlot(null)
+    if (!dragState) return
+    if (dragState.type === 'grid') {
+      const fromSlot = gridSlots.findIndex(t => t?.id === dragState.id)
+      if (fromSlot === -1) { setDragState(null); return }
+      await reorderGrid(fromSlot, slotIndex)
+    } else {
+      await insertIntoGrid(dragState.id, slotIndex)
+    }
+    setDragState(null)
+  }
+
+  const onDragEnd = () => { setDragState(null); setDragOverSlot(null) }
+
+  // ── Tile editor ────────────────────────────────────────────────────────────
+  const openTileEdit = (task: BingoTask) => {
+    setEditingTile(task)
+    setTileTitle(task.title)
+    setTileColor(task.color)
+    setTileHex(task.hex_code)
+    setTileCategory(task.category || '')
+    setTilePoints(task.points ?? 0)
+    setTileSectionId(task.section_id)
+    setTileTaskType(task.task_type ?? 'standard')
+    setTileAnswerQuestion(task.answer_question ?? '')
+    setTileAnswerText(task.answer_text ?? '')
+  }
+
+  const saveTile = async () => {
+    if (!editingTile || !tileTitle.trim() || !tileColor.trim()) return
+    setTileSaving(true)
+    try {
+      const updates: Partial<BingoTask> = {
+        title: tileTitle.trim(), color: tileColor.trim(), hex_code: tileHex,
+        category: tileCategory.trim(), points: tilePoints,
+        task_type: tileTaskType,
+        answer_question: tileTaskType === 'answer' ? tileAnswerQuestion.trim() || null : null,
+        answer_text: tileTaskType === 'answer'
+          ? tileAnswerText.split('\n').map(l => l.trim()).filter(Boolean).join('\n') || null
+          : null,
+      }
+      // Moving a tile to another compartment only changes where it lives in
+      // the library — board placements are separate rows and stay intact.
+      if (tileSectionId !== editingTile.section_id) {
+        updates.section_id = tileSectionId
+      }
+      await supabase.from('bingo_tasks').update(updates).eq('id', editingTile.id)
+      setTasks(prev => prev.map(t => t.id === editingTile.id ? { ...t, ...updates } : t))
+      setEditingTile(null)
+    } catch (err) {
+      alert('Failed to save: ' + (err instanceof Error ? err.message : 'Unknown error'))
+    } finally { setTileSaving(false) }
+  }
+
+  // Add a card from any section onto the current board's grid. Cards are
+  // universal — this just creates a placement row, never a copy.
+  const addCardFromLibrary = async (task: BingoTask) => {
+    if (!currentSectionId || gridTasks.length >= 25) return
+    const firstEmpty = gridSlots.findIndex(s => s === null)
+    if (firstEmpty === -1) return
+    await insertIntoGrid(task.id, firstEmpty)
+  }
+
+  const duplicateTask = async (task: BingoTask) => {
+    try {
+      // A manual duplicate is a fresh card, not copy-on-use lineage
+      // (clonedFrom null keeps it out of the "already copied" lookup).
+      await copyTaskFull(task, { sectionId: task.section_id, title: `${task.title} (copy)`, clonedFrom: null })
+    } catch {
+      alert('Failed to duplicate')
+    }
+  }
+
+  const saveCategoryInline = async (taskId: string, categoryName: string) => {
+    setEditingCategoryId(null)
+    let finalName = categoryName
+    if (categoryName === '__new__') {
+      const task = tasks.find(t => t.id === taskId)
+      if (!task) return
+      const created = await promptAndCreateCategory(task.section_id)
+      if (!created) return
+      finalName = created
+    }
+    await supabase.from('bingo_tasks').update({ category: finalName }).eq('id', taskId)
+    setTasks(prev => prev.map(t => t.id === taskId ? { ...t, category: finalName } : t))
+  }
+
+  const matchesBulkCategory = (t: BingoTask, categoryKey: string) => {
+    if (t.section_id !== currentSectionId) return false
+    return categoryKey === '__none__' ? !t.category : t.category === categoryKey
+  }
+
+  const setBulkCategoryPoints = async (categoryKey: string, points: number) => {
+    const affected = tasks.filter(t => matchesBulkCategory(t, categoryKey))
+    await Promise.all(affected.map(t => supabase.from('bingo_tasks').update({ points }).eq('id', t.id)))
+    setTasks(prev => prev.map(t => matchesBulkCategory(t, categoryKey) ? { ...t, points } : t))
+  }
+
+  const setBulkCategoryColor = async (categoryKey: string, hex: string) => {
+    const affected = tasks.filter(t => matchesBulkCategory(t, categoryKey))
+    setTasks(prev => prev.map(t => matchesBulkCategory(t, categoryKey) ? { ...t, hex_code: hex } : t))
+    await Promise.all(affected.map(t => supabase.from('bingo_tasks').update({ hex_code: hex }).eq('id', t.id)))
+  }
+
+  // ── Challenge actions ──────────────────────────────────────────────────────
+  const createTask = async () => {
+    if (!formTitle.trim() || !formColor.trim() || !currentSectionId) return
+    setFormSaving(true)
+    try {
+      // sort_order is kept high so new off-grid tasks don't collide with slot indices (0-24).
+      const nextOrder = Math.max(25, scopedTasks.length + 25)
+      await supabase.from('bingo_tasks').insert({
+        section_id: currentSectionId,
+        owner_id: myOwnerValue,
+        title: formTitle.trim(), color: formColor.trim(), hex_code: formHex,
+        category: formCategory.trim(), sort_order: nextOrder, points: formPoints,
+        task_type: formTaskType,
+        answer_question: formTaskType === 'answer' ? formAnswerQuestion.trim() || null : null,
+        answer_text: formTaskType === 'answer'
+          ? formAnswerText.split('\n').map(l => l.trim()).filter(Boolean).join('\n') || null
+          : null,
+      })
+      setFormTitle(''); setFormColor(''); setFormHex('#3B82F6'); setFormCategory(''); setFormPoints(0)
+      setFormTaskType('standard'); setFormAnswerQuestion(''); setFormAnswerText('')
+      setShowForm(false)
+      await fetchAll()
+    } catch (err) {
+      alert('Failed to create: ' + (err instanceof Error ? err.message : 'Unknown error'))
+    } finally { setFormSaving(false) }
+  }
+
+  const deleteTask = async (id: string, title: string) => {
+    if (!confirm(`Delete "${title}"? All scans for this challenge will also be removed.`)) return
+    await supabase.from('bingo_tasks').delete().eq('id', id)
+    await fetchAll()
+  }
+
+  const deleteTeam = async (id: string, name: string) => {
+    if (!confirm(`Delete team "${name}" and all their scan records?`)) return
+    await supabase.from('bingo_teams').delete().eq('id', id)
+    await fetchAll()
+  }
+
+  const resetTeamScore = async (id: string, name: string) => {
+    if (!confirm(`Reset all progress for "${name}"? This clears scans, photo submissions, and bonus points. The team itself, members, and password are kept.`)) return
+    const teamSubs = photoSubmissions.filter(s => s.team_id === id)
+    const subIds = teamSubs.map(s => s.id)
+    const photoPaths = teamSubs.map(s => extractStoragePath(s.photo_url)).filter((p): p is string => !!p)
+    // Optimistic UI
+    setScans(prev => prev.filter(s => s.team_id !== id))
+    setPhotoSubmissions(prev => prev.filter(s => s.team_id !== id))
+    setTeams(prev => prev.map(t => t.id === id ? { ...t, bonus_points: 0, bonus_breakdown: [] } : t))
+    // Persist
+    await Promise.all([
+      supabase.from('bingo_scans').delete().eq('team_id', id),
+      subIds.length > 0 ? supabase.from('bingo_photo_submissions').delete().in('id', subIds) : Promise.resolve({ error: null } as any),
+      supabase.from('bingo_teams').update({ bonus_points: 0, bonus_breakdown: [] }).eq('id', id),
+    ])
+    if (photoPaths.length > 0) await supabase.storage.from('media').remove(photoPaths)
+    await fetchAll()
+  }
+
+  // Delete every team on the CURRENT board, cascading their members, scans and
+  // photo submissions (FK ON DELETE CASCADE) and cleaning up storage photos.
+  // Strictly scoped to currentSectionId, so other boards are never touched.
+  // Returns false if the delete failed. Callers handle the confirm + busy state.
+  const wipeSectionTeams = async (): Promise<boolean> => {
+    const sectionTeams = teams.filter(t => t.section_id === currentSectionId)
+    const teamIds = sectionTeams.map(t => t.id)
+    if (teamIds.length === 0) return true
+    const sectionSubs = photoSubmissions.filter(s => teamIds.includes(s.team_id))
+    const teamPhotoPaths = sectionTeams.map(t => t.photo_url ? extractStoragePath(t.photo_url) : null).filter((p): p is string => !!p)
+    const subPhotoPaths = sectionSubs.map(s => extractStoragePath(s.photo_url)).filter((p): p is string => !!p)
+    // Optimistic UI — remove the teams and everything tied to them.
+    setScans(prev => prev.filter(s => !teamIds.includes(s.team_id)))
+    setPhotoSubmissions(prev => prev.filter(s => !teamIds.includes(s.team_id)))
+    setMembers(prev => prev.filter(m => !teamIds.includes(m.team_id)))
+    setTeams(prev => prev.filter(t => !teamIds.includes(t.id)))
+    const { error } = await supabase.from('bingo_teams').delete().in('id', teamIds)
+    if (error) { alert('Failed to remove teams: ' + error.message); await fetchAll(); return false }
+    const allPhotoPaths = [...teamPhotoPaths, ...subPhotoPaths]
+    if (allPhotoPaths.length > 0) await supabase.storage.from('media').remove(allPhotoPaths)
+    return true
+  }
+
+  // ── Reset Game (whole board) — clears progress AND removes all teams ───────
+  const resetGame = async () => {
+    const section = sections.find(s => s.id === currentSectionId)
+    const sectionTeams = teams.filter(t => t.section_id === currentSectionId)
+    const sectionScans = scans.filter(s => sectionTeams.some(t => t.id === s.team_id))
+    const sectionSubs = photoSubmissions.filter(s => sectionTeams.some(t => t.id === s.team_id))
+    const sectionMembers = members.filter(m => sectionTeams.some(t => t.id === m.team_id))
+
+    if (!confirm(
+      `Reset game for "${section?.name ?? 'this board'}"?\n\n` +
+      `This will permanently remove ALL ${sectionTeams.length} team${sectionTeams.length !== 1 ? 's' : ''} from this board, along with:\n` +
+      `  • ${sectionMembers.length} player${sectionMembers.length !== 1 ? 's' : ''}\n` +
+      `  • ${sectionScans.length} scan record${sectionScans.length !== 1 ? 's' : ''}\n` +
+      `  • ${sectionSubs.length} photo submission${sectionSubs.length !== 1 ? 's' : ''}\n` +
+      `  • all bonus points and photos\n\n` +
+      `The board will be left with 0 teams. Other boards are NOT affected. This cannot be undone.`
+    )) return
+
+    setResettingGame(true)
+    try {
+      await wipeSectionTeams()
+    } finally {
+      setResettingGame(false)
+    }
+  }
+
+  // ── Reset Teams (remove ALL groups from THIS board → "no team") ─────────────
+  // Scoped strictly to currentSectionId, so other boards are never touched.
+  const resetTeams = async () => {
+    const section = sections.find(s => s.id === currentSectionId)
+    const sectionTeams = teams.filter(t => t.section_id === currentSectionId)
+    if (sectionTeams.length === 0) return
+    const sectionMembers = members.filter(m => sectionTeams.some(t => t.id === m.team_id))
+
+    if (!confirm(
+      `Remove ALL ${sectionTeams.length} group${sectionTeams.length !== 1 ? 's' : ''} from "${section?.name ?? 'this board'}"?\n\n` +
+      `This permanently deletes every group on this board, plus:\n` +
+      `  • ${sectionMembers.length} player${sectionMembers.length !== 1 ? 's' : ''}\n` +
+      `  • all their scans, photo submissions, bonus points and photos\n\n` +
+      `Other boards are NOT affected. This cannot be undone.`
+    )) return
+
+    setResettingTeams(true)
+    try {
+      await wipeSectionTeams()
+    } finally {
+      setResettingTeams(false)
+    }
+  }
+
+  const removeMember = async (memberId: string, memberName: string, teamName: string) => {
+    if (!confirm(`Remove "${memberName}" from ${teamName}?`)) return
+    setMembers(prev => prev.filter(m => m.id !== memberId))
+    const { error } = await supabase.from('bingo_members').delete().eq('id', memberId)
+    if (error) { alert('Failed to remove member'); await fetchAll() }
+  }
+
+  const moveMember = async (memberId: string, newTeamId: string) => {
+    setMembers(prev => prev.map(m => m.id === memberId ? { ...m, team_id: newTeamId } : m))
+    await supabase.from('bingo_members').update({ team_id: newTeamId }).eq('id', memberId)
+  }
+
+  const approvePhotoSubmission = async (sub: BingoPhotoSubmission) => {
+    setPhotoSubmissions(prev => prev.map(s => s.id === sub.id ? { ...s, status: 'approved' } : s))
+    await supabase.from('bingo_photo_submissions').update({ status: 'approved' }).eq('id', sub.id)
+    if (sub.scan_id) {
+      await supabase.from('bingo_scans').update({ completed: true, completed_at: new Date().toISOString() }).eq('id', sub.scan_id)
+      setScans(prev => prev.map(s => s.id === sub.scan_id ? { ...s, completed: true } : s))
+    }
+  }
+
+  const rejectPhotoSubmission = async (sub: BingoPhotoSubmission) => {
+    const wasApproved = sub.status === 'approved'
+    setPhotoSubmissions(prev => prev.map(s => s.id === sub.id ? { ...s, status: 'rejected' } : s))
+    await supabase.from('bingo_photo_submissions').update({ status: 'rejected' }).eq('id', sub.id)
+    // If we're flipping from approved → rejected, undo the scan completion.
+    if (wasApproved && sub.scan_id) {
+      await supabase.from('bingo_scans').update({ completed: false, completed_at: null }).eq('id', sub.scan_id)
+      setScans(prev => prev.map(s => s.id === sub.scan_id ? { ...s, completed: false } : s))
+    }
+  }
+
+  const toggleSubmissionSelected = (id: string) => {
+    setSelectedSubmissionIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+
+  const setAllSubmissionsSelected = (subs: BingoPhotoSubmission[], checked: boolean) => {
+    setSelectedSubmissionIds(prev => {
+      const next = new Set(prev)
+      if (checked) subs.forEach(s => next.add(s.id))
+      else subs.forEach(s => next.delete(s.id))
+      return next
+    })
+  }
+
+  const extractStoragePath = (publicUrl: string): string | null => {
+    const match = publicUrl.match(/\/storage\/v1\/object\/public\/media\/(.+)$/)
+    return match ? decodeURIComponent(match[1]) : null
+  }
+
+  const deletePhotoSubmission = async (sub: BingoPhotoSubmission) => {
+    if (!confirm("Delete this submission? The photo will be removed and the team's progress on this tile will reset.")) return
+    setPhotoSubmissions(prev => prev.filter(s => s.id !== sub.id))
+    if (sub.status === 'approved' && sub.scan_id) {
+      await supabase.from('bingo_scans').update({ completed: false, completed_at: null }).eq('id', sub.scan_id)
+      setScans(prev => prev.map(s => s.id === sub.scan_id ? { ...s, completed: false } : s))
+    }
+    await supabase.from('bingo_photo_submissions').delete().eq('id', sub.id)
+    const path = extractStoragePath(sub.photo_url)
+    if (path) await supabase.storage.from('media').remove([path])
+  }
+
+  const bulkDeleteSubmissions = async (subs: BingoPhotoSubmission[]) => {
+    if (subs.length === 0) return
+    if (!confirm(`Delete ${subs.length} submission${subs.length === 1 ? '' : 's'}? Photos will be removed and progress on the affected tiles will reset.`)) return
+    setBulkActioning(true)
+    try {
+      const ids = subs.map(s => s.id)
+      setPhotoSubmissions(prev => prev.filter(s => !ids.includes(s.id)))
+      const scansToUncomplete = subs.filter(s => s.status === 'approved' && s.scan_id).map(s => s.scan_id!)
+      if (scansToUncomplete.length > 0) {
+        await supabase.from('bingo_scans').update({ completed: false, completed_at: null }).in('id', scansToUncomplete)
+        setScans(prev => prev.map(s => scansToUncomplete.includes(s.id) ? { ...s, completed: false } : s))
+      }
+      await supabase.from('bingo_photo_submissions').delete().in('id', ids)
+      const paths = subs.map(s => extractStoragePath(s.photo_url)).filter((p): p is string => !!p)
+      if (paths.length > 0) await supabase.storage.from('media').remove(paths)
+    } finally {
+      setBulkActioning(false)
+    }
+  }
+
+  const bulkSetStatus = async (subs: BingoPhotoSubmission[], status: 'approved' | 'rejected') => {
+    if (subs.length === 0) return
+    setBulkActioning(true)
+    try {
+      // Optimistic UI
+      const ids = subs.map(s => s.id)
+      setPhotoSubmissions(prev => prev.map(s => ids.includes(s.id) ? { ...s, status } : s))
+      await supabase.from('bingo_photo_submissions').update({ status }).in('id', ids)
+      // Cascade to scans:
+      // - approve → mark scans completed
+      // - reject  → if any of these were previously approved, un-complete the scan
+      const scansToComplete = subs.filter(s => s.scan_id && status === 'approved').map(s => s.scan_id!)
+      const scansToUncomplete = subs.filter(s => s.scan_id && status === 'rejected' && s.status === 'approved').map(s => s.scan_id!)
+      if (scansToComplete.length > 0) {
+        await supabase.from('bingo_scans').update({ completed: true, completed_at: new Date().toISOString() }).in('id', scansToComplete)
+        setScans(prev => prev.map(s => scansToComplete.includes(s.id) ? { ...s, completed: true } : s))
+      }
+      if (scansToUncomplete.length > 0) {
+        await supabase.from('bingo_scans').update({ completed: false, completed_at: null }).in('id', scansToUncomplete)
+        setScans(prev => prev.map(s => scansToUncomplete.includes(s.id) ? { ...s, completed: false } : s))
+      }
+    } finally {
+      setBulkActioning(false)
+    }
+  }
+
+  const [downloadingZip, setDownloadingZip] = useState(false)
+  const downloadSubmissionsZip = async (subs: BingoPhotoSubmission[]) => {
+    if (subs.length === 0) return
+    setDownloadingZip(true)
+    try {
+      const zip = new JSZip()
+      const usedNames = new Map<string, number>()
+      const results = await Promise.all(subs.map(async (sub) => {
+        try {
+          const res = await fetch(sub.photo_url)
+          if (!res.ok) return { ok: false as const, sub }
+          const blob = await res.blob()
+          const team = teams.find(t => t.id === sub.team_id)
+          const task = tasks.find(t => t.id === sub.task_id)
+          const groupPart = sanitizeForFilename(team?.name ?? 'unknown-group')
+          const stationPart = sanitizeForFilename(task?.title ?? 'unknown-station')
+          const ext = extFromUrl(sub.photo_url)
+          const base = `${groupPart}__${stationPart}`
+          const count = (usedNames.get(base) ?? 0) + 1
+          usedNames.set(base, count)
+          const name = count === 1 ? `${base}.${ext}` : `${base}_${count}.${ext}`
+          return { ok: true as const, name, blob, status: sub.status }
+        } catch {
+          return { ok: false as const, sub }
+        }
+      }))
+      const failed: BingoPhotoSubmission[] = []
+      for (const r of results) {
+        if (r.ok) {
+          // Group by status into subfolders for easier review.
+          zip.folder(r.status)?.file(r.name, r.blob)
+        } else {
+          failed.push(r.sub)
+        }
+      }
+      if (zip.files && Object.keys(zip.files).length === 0) {
+        alert('Could not download any images. Check your network and try again.')
+        return
+      }
+      const out = await zip.generateAsync({ type: 'blob' })
+      const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(out)
+      a.download = `bingo-submissions_${stamp}.zip`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(a.href)
+      if (failed.length > 0) {
+        alert(`Downloaded ${results.length - failed.length} image(s). ${failed.length} failed to fetch.`)
+      }
+    } finally {
+      setDownloadingZip(false)
+    }
+  }
+
+  const updateTeam = async (id: string, updates: Partial<BingoTeam>) => {
+    setTeams(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t))
+    await supabase.from('bingo_teams').update(updates).eq('id', id)
+  }
+
+  // Open the bonus-points breakdown popup for a team. Seed the draft from its
+  // saved breakdown; if the team has a legacy total with no breakdown, start it
+  // as a single "Bonus" row so the number isn't silently lost.
+  const openBonusModal = (team: BingoTeam) => {
+    const saved = team.bonus_breakdown ?? []
+    if (saved.length > 0) setBonusDraft(saved.map(i => ({ ...i })))
+    else if ((team.bonus_points ?? 0) !== 0) setBonusDraft([{ label: 'Bonus', points: team.bonus_points }])
+    else setBonusDraft([])
+    setBonusTeam(team)
+  }
+
+  // Persist the draft: bonus_points stays the authoritative total (sum of rows).
+  // Blank-label rows are dropped so leftover empties don't clutter the total.
+  const saveBonus = async () => {
+    if (!bonusTeam) return
+    const cleaned = bonusDraft
+      .map(i => ({ label: i.label.trim(), points: Number.isFinite(i.points) ? i.points : 0 }))
+      .filter(i => i.label !== '' || i.points !== 0)
+    const total = cleaned.reduce((sum, i) => sum + i.points, 0)
+    setBonusSaving(true)
+    try {
+      await updateTeam(bonusTeam.id, { bonus_breakdown: cleaned, bonus_points: total })
+      setBonusTeam(null)
+    } finally {
+      setBonusSaving(false)
+    }
+  }
+
+  const uploadTeamPhoto = async (teamId: string, file: File) => {
+    if (file.size > 5 * 1024 * 1024) { alert(`${file.name} too large (max 5 MB).`); return }
+    if (!file.type.startsWith('image/')) { alert('Please choose an image file.'); return }
+    setUploadingTeamPhoto(teamId)
+    try {
+      const ext = file.name.split('.').pop() || 'jpg'
+      const fileName = `${teamId}-${Date.now()}.${ext}`
+      const path = `bingo-media/team-photos/${fileName}`
+      const { error } = await supabase.storage.from('media').upload(path, file, { upsert: false })
+      if (error) { alert(`Upload failed: ${error.message}`); return }
+      const { data: urlData } = supabase.storage.from('media').getPublicUrl(path)
+      await updateTeam(teamId, { photo_url: urlData.publicUrl })
+    } finally {
+      setUploadingTeamPhoto(null)
+    }
+  }
+
+  const removeTeamPhoto = async (teamId: string) => {
+    if (!confirm('Remove this group\u2019s photo?')) return
+    await updateTeam(teamId, { photo_url: null })
+  }
+
+  const moveTeamToSection = async (id: string, newSectionId: string) => {
+    const team = teams.find(t => t.id === id)
+    if (!team || team.section_id === newSectionId) return
+    const newName = sections.find(s => s.id === newSectionId)?.name ?? 'the new section'
+    // Team scans reference tasks in the old section, so progress will read as 0
+    // in the new section until they scan those tasks. Make that explicit.
+    if (!confirm(`Move "${team.name}" to ${newName}? Their existing scan progress will no longer apply.`)) return
+    await updateTeam(id, { section_id: newSectionId })
+  }
+
+  const createGroup = async (sectionId: string) => {
+    const name = newGroupName.trim()
+    const pwd = newGroupPassword.replace(/\D/g, '').slice(0, 4)
+    if (!name) return
+    if (!/^\d{4}$/.test(pwd)) { alert('Password must be exactly 4 digits.'); return }
+    if (teams.some(t => t.section_id === sectionId && t.name.toLowerCase() === name.toLowerCase())) {
+      alert(`Group "${name}" already exists in this compartment.`)
+      return
+    }
+    const { data, error } = await supabase
+      .from('bingo_teams')
+      .insert({ name, password: pwd, section_id: sectionId })
+      .select()
+      .single()
+    if (error || !data) { alert('Failed to create group'); return }
+    setTeams(prev => [...prev, data])
+    setNewGroupName('')
+    setNewGroupPassword('')
+  }
+
+  const bulkCreateGroups = async (sectionId: string, count: number) => {
+    const existing = teams.filter(t => t.section_id === sectionId)
+    const rows = Array.from({ length: count }, (_, i) => {
+      const num = existing.length + i + 1
+      const name = `Group ${num}`
+      const password = String(1000 + Math.floor(Math.random() * 9000)).padStart(4, '0')
+      return { name, password, section_id: sectionId }
+    }).filter(r => !teams.some(t => t.section_id === sectionId && t.name.toLowerCase() === r.name.toLowerCase()))
+    if (rows.length === 0) { alert('All group names already exist.'); return }
+    const { data, error } = await supabase.from('bingo_teams').insert(rows).select()
+    if (error || !data) { alert('Failed to bulk create groups'); return }
+    setTeams(prev => [...prev, ...data])
+  }
+
+  const copyLink = (taskId: string) => {
+    navigator.clipboard.writeText(`${window.location.origin}/bingo-dash/task/${taskId}`)
+    setCopiedId(taskId)
+    setTimeout(() => setCopiedId(null), 1500)
+  }
+
+  // ── Import ─────────────────────────────────────────────────────────────────
+  const handleImportPreview = () => {
+    setImportError(''); setImportPreview(null)
+    try {
+      const rows = parseImport(importText)
+      if (rows.length === 0) throw new Error('No items found')
+      setImportPreview(rows)
+    } catch (err) { setImportError(err instanceof Error ? err.message : 'Invalid JSON') }
+  }
+
+  const handleImportConfirm = async () => {
+    if (!importPreview) return
+    setImporting(true)
+    try {
+      if (!currentSectionId) throw new Error('No section selected')
+      const startOrder = Math.max(25, scopedTasks.length + 25)
+      for (let i = 0; i < importPreview.length; i++) {
+        const row = importPreview[i]
+        const { data: task, error: taskErr } = await supabase
+          .from('bingo_tasks')
+          .insert({ section_id: currentSectionId, owner_id: myOwnerValue, title: row.title, color: row.color, hex_code: row.hex_code, category: '', sort_order: startOrder + i * 10 })
+          .select().single()
+        if (taskErr) throw taskErr
+        if (row.clues.length > 0) {
+          await supabase.from('bingo_task_pages').insert({
+            task_id: task.id, page_order: 0, media_url: null, media_type: null,
+            pointer_1: row.clues[0] ?? null, pointer_2: row.clues[1] ?? null,
+            pointer_3: row.clues[2] ?? null, pointer_4: row.clues[3] ?? null,
+            pointer_5: row.clues[4] ?? null, pointer_6: row.clues[5] ?? null,
+            example_1: null, example_2: null, example_3: null, example_4: null, example_5: null, example_6: null,
+            icon_1: null, icon_2: null, icon_3: null, icon_4: null, icon_5: null, icon_6: null,
+          })
+        }
+      }
+      setShowImport(false); setImportText(''); setImportPreview(null)
+      await fetchAll()
+    } catch (err) { setImportError(err instanceof Error ? err.message : 'Import failed') }
+    finally { setImporting(false) }
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <p className="text-gray-400">Loading...</p>
+      </div>
+    )
+  }
+
+  // ── Render ─────────────────────────────────────────────────────────────────
+  return (
+    <div className="min-h-screen bg-gray-950" onDragEnd={onDragEnd}>
+      {/* Header */}
+      <header className="sticky top-0 z-30 border-b border-white/10" style={{ background: 'linear-gradient(135deg, #1a1130 0%, #0f0c1a 60%, #111827 100%)' }}>
+        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button onClick={() => navigate('/')} className="text-gray-600 hover:text-gray-300 transition-colors">←</button>
+            <div>
+              <h1 className="text-xl font-black text-white tracking-tight">Bingo Dash <span className="text-violet-400">Admin</span></h1>
+              <p className="text-[10px] text-gray-600 uppercase tracking-widest font-bold hidden sm:block">Control Hub</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="hidden sm:flex items-center gap-3 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 mr-1">
+              <span className="text-xs font-black text-violet-400">{scopedTasks.length}</span>
+              <span className="text-[10px] text-gray-600 uppercase tracking-wider">challenges</span>
+              <span className="w-px h-3 bg-white/10" />
+              <span className="text-xs font-black text-emerald-400">{scopedTeams.length}</span>
+              <span className="text-[10px] text-gray-600 uppercase tracking-wider">teams</span>
+            </div>
+            <button
+              onClick={() => { setShowJoinLink(true); setJoinLinkCopied(false); setJoinLinkTab('player') }}
+              className="px-3 py-1.5 rounded-lg text-sm font-medium text-emerald-400 border border-emerald-800 hover:bg-emerald-950/60 transition-colors"
+            >
+              Join Link / QR
+            </button>
+            <a href={playerViewPath} target="_blank" rel="noopener noreferrer"
+              className="px-3 py-1.5 rounded-lg text-sm font-medium text-violet-400 border border-violet-800 hover:bg-violet-950/60 transition-colors">
+              Player View ↗
+            </a>
+            <a href={currentBoard ? `/bingo-dash/projector/${currentBoard.slug}` : '/bingo-dash/projector'} target="_blank" rel="noopener noreferrer"
+              className="px-3 py-1.5 rounded-lg text-sm font-medium text-amber-400 border border-amber-800 hover:bg-amber-950/60 transition-colors">
+              Scoreboard ↗
+            </a>
+            <button
+              onClick={() => setActiveTab('teams')}
+              className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-400 border border-gray-700 hover:bg-white/5 transition-colors"
+            >
+              View Teams
+            </button>
+            <button
+              onClick={() => { setShowImport(true); setImportText(''); setImportPreview(null); setImportError('') }}
+              className="px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-500 text-sm font-bold transition-colors shadow-lg shadow-violet-900/40"
+            >
+              Import
+            </button>
+            {isOwner && (
+              <button
+                onClick={() => navigate('/bingo-dash/accounts')}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium text-sky-400 border border-sky-800 hover:bg-sky-950/60 transition-colors"
+              >
+                Accounts
+              </button>
+            )}
+            {/* A trainer lead runs their own crew; a facilitator is on someone
+                else's, so they get no invite of their own. */}
+            {!isOwner && !account?.facilitator_host && (
+              <button
+                onClick={() => navigate('/bingo-dash/crew')}
+                title="Invite helpers to facilitate your event"
+                className="px-3 py-1.5 rounded-lg text-sm font-medium text-sky-400 border border-sky-800 hover:bg-sky-950/60 transition-colors"
+              >
+                My crew
+              </button>
+            )}
+            <div className="flex items-center gap-2 pl-2 border-l border-white/10">
+              <span className="hidden md:block text-[11px] text-gray-500 max-w-[140px] truncate" title={account?.email ?? ''}>
+                {account?.email}
+              </span>
+              <button
+                onClick={signOut}
+                className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-400 border border-gray-700 hover:bg-white/5 transition-colors"
+              >
+                Sign out
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Board tab bar ─────────────────────────────────────────────────── */}
+        <div className="max-w-6xl mx-auto px-6 py-2.5 flex items-center gap-1.5 overflow-x-auto border-t border-white/5">
+          <span className="text-[9px] font-black text-gray-600 uppercase tracking-widest mr-2 flex-shrink-0">Boards</span>
+          {myBoards.map(s => {
+            const isActive = currentSectionId === s.id
+            const isLive = activeBoardPointer === s.id || s.game_started
+            return (
+              <button
+                key={s.id}
+                onClick={() => setCurrentSectionId(s.id)}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold transition-all flex-shrink-0 ${
+                  isActive
+                    ? 'bg-violet-600 text-white shadow-lg shadow-violet-900/50'
+                    : 'text-gray-400 hover:text-white hover:bg-white/10 border border-white/10'
+                }`}
+              >
+                {s.name}
+                {isLive && (
+                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${isActive ? 'bg-green-300' : 'bg-green-500'}`} />
+                )}
+              </button>
+            )
+          })}
+          {showInlineBoardCreate ? (
+            <input
+              autoFocus
+              value={inlineBoardName}
+              onChange={e => setInlineBoardName(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === 'Enter') { createSection(inlineBoardName); setShowInlineBoardCreate(false) }
+                if (e.key === 'Escape') { setShowInlineBoardCreate(false); setInlineBoardName('') }
+              }}
+              onBlur={() => { if (!inlineBoardName.trim()) setShowInlineBoardCreate(false) }}
+              placeholder="Board name…"
+              className="px-2.5 py-1.5 text-sm border border-violet-500 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-500 w-40 flex-shrink-0 bg-gray-900 text-white placeholder-gray-600"
+            />
+          ) : (
+            <button
+              onClick={() => setShowInlineBoardCreate(true)}
+              className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-sm text-gray-600 hover:text-gray-300 hover:bg-white/5 transition-colors flex-shrink-0 border border-dashed border-white/10"
+            >
+              + New Board
+            </button>
+          )}
+          <div className="ml-auto flex items-center gap-2 flex-shrink-0">
+            {currentSectionId && activeBoardPointer === currentSectionId ? (
+              <span className="text-xs font-bold text-green-400 flex items-center gap-1.5 px-2.5 py-1.5 bg-green-950/50 border border-green-800 rounded-lg">
+                <span className="w-1.5 h-1.5 rounded-full bg-green-400 inline-block animate-pulse" /> Live
+              </span>
+            ) : (
+              <button
+                onClick={() => currentSectionId && setActiveSection(currentSectionId)}
+                disabled={!currentSectionId}
+                className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-green-400 border border-green-800 hover:bg-green-950/50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                title="Make this board the one players see at /bingo-dash"
+              >
+                Set live
+              </button>
+            )}
+            <button
+              onClick={() => setShowSectionManager(true)}
+              className="px-2.5 py-1.5 rounded-lg text-xs font-bold text-gray-600 hover:text-gray-300 hover:bg-white/5 transition-colors"
+              title="Rename or delete boards"
+            >
+              Manage
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <main className="max-w-6xl mx-auto px-6 py-8 flex flex-col gap-10">
+
+        {/* ── Tab navigation ───────────────────────────────────────────────── */}
+        <div className="flex gap-0 border-b border-white/10 -mt-4">
+          {(() => {
+            const pendingCount = photoSubmissions.filter(s => s.status === 'pending').length
+            return ([
+              { key: 'board', label: 'Board' },
+              { key: 'library', label: 'Card Library' },
+              { key: 'teams', label: `Teams${scopedTeams.length > 0 ? ` (${scopedTeams.length})` : ''}` },
+              { key: 'submissions', label: 'Submissions', badge: pendingCount },
+            ] as const).map(tab => (
+              <button
+                key={tab.key}
+                onClick={() => setActiveTab(tab.key)}
+                className={`px-5 py-3 text-sm font-bold border-b-2 -mb-px transition-colors flex items-center gap-2 ${
+                  activeTab === tab.key
+                    ? 'border-violet-500 text-violet-400'
+                    : 'border-transparent text-gray-600 hover:text-gray-300 hover:border-gray-600'
+                }`}
+              >
+                {tab.label}
+                {'badge' in tab && tab.badge > 0 && (
+                  <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-amber-500 text-black text-[10px] font-black">
+                    {tab.badge}
+                  </span>
+                )}
+              </button>
+            ))
+          })()}
+        </div>
+
+        {activeTab === 'board' && <>
+
+        {/* ── Game Access (per-section) ─────────────────────────────────── */}
+        <section>
+          <h2 className="text-xl font-bold text-white mb-2">Game Access</h2>
+          <p className="text-xs text-gray-500 mb-3">
+            Control which games are live. Each section is independent — you can run multiple games simultaneously.
+          </p>
+          {(() => {
+            const currentSection = sections.find(s => s.id === currentSectionId)
+            const isStarted = currentSection?.game_started ?? false
+            return (
+              <div className={`flex items-center justify-between gap-4 rounded-2xl px-6 py-5 ${isStarted ? 'bg-green-950/40 border border-green-800' : 'bg-gray-800/60 border border-white/10'}`}>
+                <div>
+                  <p className={`text-lg font-black ${isStarted ? 'text-green-400' : 'text-gray-300'}`}>
+                    {isStarted ? '● Game is LIVE' : '■ Game is Locked'}
+                  </p>
+                  <p className="text-xs text-gray-500 mt-0.5">
+                    {isStarted
+                      ? `Participants in "${currentSection?.name}" can access the board and complete challenges.`
+                      : `Participants in "${currentSection?.name}" see a waiting screen.`}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 flex-shrink-0">
+                  <button
+                    onClick={() => currentSectionId && toggleSectionGameStarted(currentSectionId, !isStarted)}
+                    disabled={!currentSectionId}
+                    className={`px-6 py-3 rounded-xl font-black text-sm transition-all disabled:opacity-40 ${
+                      isStarted
+                        ? 'bg-red-500 text-white hover:bg-red-600'
+                        : 'bg-green-500 text-white hover:bg-green-600'
+                    }`}
+                  >
+                    {isStarted ? 'Lock Game' : 'Start Game'}
+                  </button>
+                  <button
+                    onClick={resetGame}
+                    disabled={resettingGame}
+                    className="px-5 py-3 rounded-xl font-black text-sm transition-all border border-red-500/40 text-red-400 hover:bg-red-950/60 disabled:opacity-50 disabled:cursor-not-allowed"
+                    title="Remove all teams from this board and clear their scans, submissions and points (this board only)"
+                  >
+                    {resettingGame ? 'Resetting…' : '↺ Reset Game'}
+                  </button>
+                </div>
+              </div>
+            )
+          })()}
+        </section>
+
+        {/* ── Timer ────────────────────────────────────────────────────────── */}
+        <section>
+          <h2 className="text-xl font-bold text-white mb-4">Timer</h2>
+          <div className="bg-gray-900 rounded-2xl p-6">
+            <div className="text-center mb-5">
+              <div
+                className="font-mono font-black tracking-wider tabular-nums leading-none"
+                style={{
+                  fontSize: 'clamp(3.5rem, 10vw, 6rem)',
+                  color: isTimerRunning
+                    ? (currentBoard?.timer_end_at && (new Date(currentBoard.timer_end_at).getTime() - Date.now()) < 120_000 ? '#f87171' : '#4ade80')
+                    : '#ffffff',
+                }}
+              >
+                {timerDisplay}
+              </div>
+              <div className={`text-sm font-bold mt-2 tracking-wider uppercase ${isTimerRunning ? 'text-green-400' : 'text-gray-500'}`}>
+                {isTimerRunning ? '● Running' : (currentBoard?.timer_seconds ?? 0) > 0 ? '■ Paused / Stopped' : '■ Not set'}
+              </div>
+            </div>
+
+            <div className="flex gap-2 justify-center mb-5">
+              {!isTimerRunning ? (
+                <button onClick={startTimer} disabled={!currentBoard?.timer_seconds || timerSaving}
+                  className="px-7 py-2.5 bg-green-500 text-white rounded-xl font-bold hover:bg-green-400 disabled:opacity-40 transition-colors">
+                  ▶ Start
+                </button>
+              ) : (
+                <button onClick={pauseTimer} disabled={timerSaving}
+                  className="px-7 py-2.5 bg-yellow-500 text-white rounded-xl font-bold hover:bg-yellow-400 transition-colors">
+                  ❚❚ Pause
+                </button>
+              )}
+              <button onClick={resetTimer} disabled={timerSaving}
+                className="px-7 py-2.5 bg-white/10 text-white rounded-xl font-bold hover:bg-white/20 transition-colors">
+                ↺ Reset
+              </button>
+            </div>
+
+            <div className="flex items-center gap-2 justify-center flex-wrap">
+              {([-10, -5, -1] as const).map(d => (
+                <button key={d} onClick={() => adjustTimer(d)} disabled={timerSaving}
+                  className="px-3 py-2 bg-white/10 text-white rounded-lg text-sm font-bold hover:bg-white/20 transition-colors disabled:opacity-40 tabular-nums">
+                  {d}m
+                </button>
+              ))}
+              <div className="flex items-center gap-1 bg-white/10 rounded-lg px-2 py-1.5 mx-1">
+                <input
+                  type="number"
+                  value={timerMinutesInput}
+                  onChange={e => setTimerMinutesInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && setTimerFromInput()}
+                  placeholder="min"
+                  className="w-14 bg-transparent text-white text-sm font-bold text-center focus:outline-none placeholder-white/30 tabular-nums"
+                  min={0}
+                />
+                <button onClick={setTimerFromInput} disabled={!timerMinutesInput.trim() || timerSaving}
+                  className="text-white/60 hover:text-white text-xs font-bold transition-colors disabled:opacity-30 pl-1 border-l border-white/20">
+                  Set
+                </button>
+              </div>
+              {([1, 5, 10] as const).map(d => (
+                <button key={d} onClick={() => adjustTimer(d)} disabled={timerSaving}
+                  className="px-3 py-2 bg-white/10 text-white rounded-lg text-sm font-bold hover:bg-white/20 transition-colors disabled:opacity-40 tabular-nums">
+                  +{d}m
+                </button>
+              ))}
+            </div>
+
+            {/* ── Time's-Up Alarm (shown to players when timer hits 0) ───── */}
+            <div className="mt-6 pt-5 border-t border-white/10">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <div>
+                  <h3 className="text-sm font-bold text-white uppercase tracking-wider">Time's-Up Alarm</h3>
+                  <p className="text-xs text-gray-500 mt-0.5">Shown full-screen to all players when the timer reaches 0. Press <span className="font-bold">Reset</span> above to clear it.</p>
+                </div>
+                {currentBoard?.timer_end_at && new Date(currentBoard.timer_end_at).getTime() <= Date.now() && (
+                  <span className="shrink-0 px-2.5 py-1 rounded-md text-[10px] font-black uppercase tracking-wider bg-red-500/20 text-red-300 border border-red-500/40 animate-pulse">● Alarm live</span>
+                )}
+              </div>
+
+              <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Message</label>
+              <textarea
+                value={currentBoard?.time_up_message ?? ''}
+                onChange={e => setSections(prev => prev.map(s => s.id === currentSectionId ? { ...s, time_up_message: e.target.value } : s))}
+                placeholder="Time's up! Please return to the meeting point."
+                rows={3}
+                className="w-full px-4 py-2.5 rounded-lg border border-white/15 bg-gray-950 text-white placeholder-gray-600 text-sm font-medium focus:outline-none focus:border-violet-500 resize-none"
+              />
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Location label</label>
+                  <input
+                    type="text"
+                    value={currentBoard?.time_up_label ?? ''}
+                    onChange={e => setSections(prev => prev.map(s => s.id === currentSectionId ? { ...s, time_up_label: e.target.value } : s))}
+                    placeholder="e.g. Colmar Plaza"
+                    className="w-full px-4 py-2.5 rounded-lg border border-white/15 bg-gray-950 text-white placeholder-gray-600 text-sm font-medium focus:outline-none focus:border-violet-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Google Maps link</label>
+                  <input
+                    type="text"
+                    value={currentBoard?.time_up_maps_url ?? ''}
+                    onChange={e => setSections(prev => prev.map(s => s.id === currentSectionId ? { ...s, time_up_maps_url: e.target.value } : s))}
+                    placeholder="https://maps.app.goo.gl/..."
+                    className="w-full px-4 py-2.5 rounded-lg border border-white/15 bg-gray-950 text-white placeholder-gray-600 text-sm font-medium focus:outline-none focus:border-violet-500"
+                  />
+                </div>
+              </div>
+
+              <div className="mt-3 flex justify-end">
+                <button
+                  onClick={() => {
+                    if (!currentBoard) return
+                    updateBoardSettings({
+                      time_up_message: currentBoard.time_up_message ?? '',
+                      time_up_label: currentBoard.time_up_label ?? '',
+                      time_up_maps_url: currentBoard.time_up_maps_url ?? '',
+                    })
+                  }}
+                  disabled={timerSaving}
+                  className="px-5 py-2 rounded-lg text-sm font-bold text-white bg-violet-500 hover:bg-violet-600 disabled:opacity-40 transition-colors"
+                >
+                  Save alarm
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        {/* ── Marshal Password ──────────────────────────────────────────────── */}
+        <section>
+          <h2 className="text-xl font-bold text-white mb-2">Marshal Password</h2>
+          <p className="text-xs text-gray-500 mb-3">Participants on this board must enter this password to complete challenges that have "Require Marshal" enabled.</p>
+          <div className="flex gap-2 items-center">
+            <input
+              type="text"
+              value={currentBoard?.marshal_password ?? ''}
+              onChange={e => setSections(prev => prev.map(s => s.id === currentSectionId ? { ...s, marshal_password: e.target.value } : s))}
+              placeholder="Marshal password..."
+              className="flex-1 px-4 py-2.5 rounded-lg border border-white/15 bg-gray-900 text-white placeholder-gray-600 text-sm font-mono font-bold focus:outline-none focus:border-violet-500"
+            />
+            <button
+              onClick={() => {
+                if (!currentBoard) return
+                updateBoardSettings({ marshal_password: currentBoard.marshal_password })
+              }}
+              className="px-5 py-2.5 rounded-lg text-sm font-bold text-white bg-violet-500 hover:bg-violet-600 transition-colors"
+            >
+              Save
+            </button>
+          </div>
+
+          {/* Photo submissions global toggle */}
+          <div className="mt-5 flex items-center justify-between gap-4 p-4 rounded-lg border border-white/10 bg-gray-900/50">
+            <div>
+              <p className="text-sm font-bold text-white">Photo submissions</p>
+              <p className="text-xs text-gray-500 mt-0.5">When ON, every task tile shows a photo upload — primary on photo-type cards, optional/evidence on marshal & answer cards. Turn OFF during marshal-led rounds where photos are not collected.</p>
+            </div>
+            <button
+              onClick={() => {
+                if (!currentBoard) return
+                updateBoardSettings({ photo_submissions_enabled: !currentBoard.photo_submissions_enabled })
+              }}
+              role="switch"
+              aria-checked={currentBoard?.photo_submissions_enabled ?? true}
+              className={`relative shrink-0 w-14 h-8 rounded-full transition-colors ${
+                currentBoard?.photo_submissions_enabled ?? true ? 'bg-violet-500' : 'bg-gray-600'
+              }`}
+            >
+              <span
+                className={`absolute top-1 left-1 w-6 h-6 rounded-full bg-white shadow transition-transform ${
+                  currentBoard?.photo_submissions_enabled ?? true ? 'translate-x-6' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+        </section>
+
+        {/* ── Board Note (shown below the bingo board on the player page) ──── */}
+        <section>
+          <h2 className="text-xl font-bold text-white mb-2">Board Note</h2>
+          <p className="text-xs text-gray-500 mb-3">
+            Shown in a box below the bingo board on the player page for this board — e.g. a reminder to
+            collect an item for the Bonsai Project. Leave the note empty to hide the box.
+          </p>
+          {(() => {
+            const sec = sections.find(s => s.id === currentSectionId)
+            if (!sec) return null
+            return (
+              <div className="p-4 rounded-lg border border-white/10 bg-gray-900/50">
+                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Note</label>
+                <textarea
+                  value={sec.board_note ?? ''}
+                  onChange={e => setSections(prev => prev.map(s => s.id === sec.id ? { ...s, board_note: e.target.value } : s))}
+                  placeholder="e.g. 🌱 Collect one item for the Bonsai Project after every 2 completed boxes!"
+                  rows={3}
+                  className="w-full px-4 py-2.5 rounded-lg border border-white/15 bg-gray-950 text-white placeholder-gray-600 text-sm font-medium focus:outline-none focus:border-violet-500 resize-none"
+                />
+                <div className="mt-3 flex items-end justify-between gap-4 flex-wrap">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Item counter</label>
+                    <div className="flex items-center gap-2 text-sm text-gray-400">
+                      <span>Collect 1 item per</span>
+                      <input
+                        type="number" min={0}
+                        value={sec.board_note_every ?? 2}
+                        onChange={e => setSections(prev => prev.map(s => s.id === sec.id ? { ...s, board_note_every: Math.max(0, parseInt(e.target.value) || 0) } : s))}
+                        className="w-16 px-2 py-1.5 rounded-lg border border-white/15 bg-gray-950 text-white text-center font-bold focus:outline-none focus:border-violet-500"
+                      />
+                      <span>completed boxes</span>
+                    </div>
+                    <p className="text-[11px] text-gray-600 mt-1">Players see a live tally of items to collect. Set to 0 to hide the counter.</p>
+                  </div>
+                  <button
+                    onClick={saveBoardNote}
+                    className="px-5 py-2 rounded-lg text-sm font-bold text-white bg-violet-500 hover:bg-violet-600 transition-colors"
+                  >
+                    Save note
+                  </button>
+                </div>
+              </div>
+            )
+          })()}
+        </section>
+
+        {/* ── Tile Display (icon vs words on the player board) ───────────────── */}
+        <section>
+          <h2 className="text-xl font-bold text-white mb-2">Tile Display</h2>
+          <p className="text-xs text-gray-500 mb-3">
+            How the 25 tiles look on players' phones for this board. A tile is only about 70px wide,
+            so a full challenge title has to shrink to be unreadable — pick <b>Icons</b> for the cleanest
+            board, or <b>Words</b> to show the category with a shortened title. Players always see the
+            full title when they tap a tile.
+          </p>
+          {(() => {
+            const mode = currentBoard?.tile_display === 'words' ? 'words' : 'icon'
+            const sampleTasks = (gridTasks.length > 0 ? gridTasks : scopedTasks).slice(0, 3)
+            const options = [
+              { value: 'icon' as const, label: 'Icons', hint: 'One big category icon per tile' },
+              { value: 'words' as const, label: 'Words', hint: 'CATEGORY + shortened title' },
+            ]
+            return (
+              <div className="p-4 rounded-lg border border-white/10 bg-gray-900/50 flex flex-col sm:flex-row sm:items-center gap-5">
+                <div className="flex gap-2">
+                  {options.map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => { if (mode !== opt.value) updateBoardSettings({ tile_display: opt.value }) }}
+                      disabled={timerSaving}
+                      className={`px-4 py-3 rounded-lg text-left border transition-colors disabled:opacity-40 ${
+                        mode === opt.value
+                          ? 'bg-violet-500 border-violet-400 text-white'
+                          : 'bg-gray-950 border-white/15 text-gray-300 hover:border-violet-500'
+                      }`}
+                    >
+                      <p className="text-sm font-bold">{opt.label}</p>
+                      <p className={`text-[11px] mt-0.5 ${mode === opt.value ? 'text-white/75' : 'text-gray-500'}`}>
+                        {opt.hint}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Live preview — the same tile face players see */}
+                {sampleTasks.length > 0 && (
+                  <div className="flex items-center gap-3">
+                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Preview</span>
+                    <div className="flex gap-1.5">
+                      {sampleTasks.map(t => (
+                        <div
+                          key={t.id}
+                          className="relative w-[70px] h-[70px] rounded-xl overflow-hidden flex items-center justify-center"
+                          style={{ backgroundColor: t.hex_code, boxShadow: `0 3px 10px ${t.hex_code}55` }}
+                        >
+                          <TileFace task={t} display={mode} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+        </section>
+
+        {/* ── Board Editor ──────────────────────────────────────────────────── */}
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-xl font-bold text-white">
+                Board Editor
+                <span className="ml-2 text-sm font-normal text-gray-500">({gridTasks.length}/25)</span>
+              </h2>
+              <p className="text-sm text-gray-500 mt-0.5">
+                Drag tiles to reorder · Drag from list to place · Hover to move ◀▶ or remove ✕
+              </p>
+            </div>
+            <a href={playerViewPath} target="_blank" rel="noopener noreferrer"
+              className="text-xs text-violet-500 hover:text-violet-700 transition-colors">
+              Preview ↗
+            </a>
+          </div>
+
+          <div className="flex gap-6 flex-col lg:flex-row items-start">
+            {/* Interactive 5×5 grid */}
+            <div className="flex-shrink-0">
+              <div className="bg-gray-900 rounded-2xl p-4">
+                <p className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3">
+                  Grid — drag to reorder
+                </p>
+                <div
+                  className="grid grid-cols-5 gap-1.5"
+                  style={{ width: 'min(380px, calc(100vw - 80px))' }}
+                >
+                  {Array.from({ length: 25 }, (_, slotIndex) => {
+                    const task = gridSlots[slotIndex]
+                    const isDragOver = dragOverSlot === slotIndex
+
+                    return task ? (
+                      <BoardTile
+                        key={task.id}
+                        task={task}
+                        index={slotIndex}
+                        total={gridTasks.length}
+                        isDragOver={isDragOver}
+                        isBeingDragged={dragState?.id === task.id && dragState.type === 'grid'}
+                        onMoveLeft={() => reorderGrid(slotIndex, slotIndex - 1)}
+                        onMoveRight={() => reorderGrid(slotIndex, slotIndex + 1)}
+                        onRemove={() => removeTile(task.id)}
+                        onEdit={() => openTileEdit(task)}
+                        onDragStart={e => onGridDragStart(e, task.id)}
+                        onDragOver={e => onSlotDragOver(e, slotIndex)}
+                        onDrop={e => onSlotDrop(e, slotIndex)}
+                        onDragEnd={onDragEnd}
+                        onDragLeave={() => setDragOverSlot(null)}
+                      />
+                    ) : (
+                      <div
+                        key={`empty-${slotIndex}`}
+                        onDragOver={e => onSlotDragOver(e, slotIndex)}
+                        onDrop={e => onSlotDrop(e, slotIndex)}
+                        onDragLeave={() => setDragOverSlot(null)}
+                        onClick={() => {
+                          if (!dragState && scopedTasks.length > 0 && gridTasks.length < 25) {
+                            setSlotPickerIndex(slotIndex)
+                            setSlotPickerFilter('all')
+                          }
+                        }}
+                        className={`aspect-square rounded-lg border-2 border-dashed transition-all duration-150 flex items-center justify-center ${
+                          isDragOver && dragState
+                            ? 'border-violet-400 bg-violet-400/20 scale-105'
+                            : scopedTasks.length > 0 && gridTasks.length < 25
+                              ? 'bg-white/5 border-white/20 hover:border-violet-400 hover:bg-violet-400/10 cursor-pointer'
+                              : 'bg-white/5 border-white/10'
+                        }`}
+                      >
+                        {scopedTasks.length > 0 && gridTasks.length < 25 && !dragState && (
+                          <span className="text-white/20 text-lg font-black leading-none select-none">+</span>
+                        )}
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Card library — pick any card from any section, filter & search */}
+            <div className="flex-1 min-w-0 w-full lg:w-auto">
+              <p className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">
+                Add to Grid
+                {gridTasks.length >= 25 && <span className="ml-2 text-red-400 normal-case font-normal">Grid full</span>}
+              </p>
+              <p className="text-[11px] text-gray-600 mb-2">
+                Cards are shared across boards — adding never makes a copy. Editing a card updates it on every board that uses it.
+              </p>
+              {/* Section + search row */}
+              <div className="flex gap-2 mb-2">
+                <select
+                  value={addListSectionFilter}
+                  onChange={e => setAddListSectionFilter(e.target.value)}
+                  className="px-2.5 py-1.5 rounded-lg border border-white/15 text-xs font-medium bg-gray-900 text-white flex-shrink-0"
+                  title="Filter by section"
+                >
+                  <option value="current">This section</option>
+                  <option value="all">All sections</option>
+                  {sections.filter(s => s.id !== currentSectionId).map(s => (
+                    <option key={s.id} value={s.id}>{s.name}</option>
+                  ))}
+                </select>
+                <input
+                  type="search"
+                  value={addListSearch}
+                  onChange={e => setAddListSearch(e.target.value)}
+                  placeholder="Search cards by title, category, color…"
+                  className="flex-1 px-3 py-1.5 rounded-lg border border-white/15 bg-gray-900 text-white placeholder-gray-600 text-xs focus:outline-none focus:ring-2 focus:ring-violet-500 min-w-0"
+                />
+              </div>
+              {/* Category chips */}
+              {addListCategories.length > 0 && (
+                <div className="flex gap-1.5 flex-wrap mb-2">
+                  <button
+                    onClick={() => setOffGridCategoryFilter('all')}
+                    className={`px-2 py-1 rounded-lg text-xs font-bold transition-colors ${offGridCategoryFilter === 'all' ? 'bg-violet-600 text-white' : 'bg-white/10 text-gray-400 hover:bg-white/15 hover:text-white'}`}
+                  >
+                    All
+                  </button>
+                  {addListCategories.map(cat => (
+                    <button
+                      key={cat}
+                      onClick={() => setOffGridCategoryFilter(cat)}
+                      className={`px-2 py-1 rounded-lg text-xs font-bold transition-colors ${offGridCategoryFilter === cat ? 'bg-violet-600 text-white' : 'bg-white/10 text-gray-400 hover:bg-white/15 hover:text-white'}`}
+                    >
+                      {cat}
+                    </button>
+                  ))}
+                </div>
+              )}
+              {addListTasks.length === 0 ? (
+                <div className="bg-gray-900 rounded-xl border border-white/10 px-4 py-8 text-center text-sm text-gray-500">
+                  No cards match these filters.
+                </div>
+              ) : (
+                <div className="bg-gray-900 rounded-xl border border-white/10 divide-y divide-white/5 max-h-96 overflow-y-auto">
+                  {addListTasks.map(task => {
+                    const isSameSection = task.section_id === currentSectionId
+                    const sectionName = sections.find(s => s.id === task.section_id)?.name ?? ''
+                    const boardCount = boardCountByTask.get(task.id) ?? 0
+                    return (
+                      <div
+                        key={task.id}
+                        draggable
+                        onDragStart={e => onListDragStart(e, task.id)}
+                        onDragEnd={onDragEnd}
+                        className={`flex items-center gap-3 px-4 py-2.5 hover:bg-white/5 transition-colors select-none cursor-grab active:cursor-grabbing ${
+                          dragState?.id === task.id ? 'opacity-40' : ''
+                        }`}
+                      >
+                        <div className="w-4 h-4 rounded-full flex-shrink-0" style={{ backgroundColor: task.hex_code }} />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-white truncate">{task.title}</p>
+                          <div className="flex items-center gap-2 text-xs text-gray-500 truncate">
+                            {task.category && <span>{task.category}</span>}
+                            {!isSameSection && (
+                              <span className="text-[10px] font-bold bg-white/10 text-gray-400 border border-white/15 rounded px-1.5 py-0.5">
+                                {sectionName}
+                              </span>
+                            )}
+                            {boardCount > 0 && (
+                              <span className="text-[10px] font-bold bg-violet-900/40 text-violet-300 border border-violet-800 rounded px-1.5 py-0.5"
+                                title="This card is shared — it already sits on other boards. Edits apply everywhere.">
+                                on {boardCount} board{boardCount > 1 ? 's' : ''}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => addCardFromLibrary(task)}
+                          disabled={gridTasks.length >= 25}
+                          className="px-3 py-1 bg-violet-900/50 text-violet-400 border border-violet-700 rounded-lg text-xs font-bold hover:bg-violet-800/50 disabled:opacity-40 transition-colors flex-shrink-0"
+                        >
+                          + Add
+                        </button>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </section>
+
+        </> /* end board tab */}
+
+        {/* ── Library tab: Compartment > Category > Cards ───────────────────── */}
+        {activeTab === 'library' && (
+        <section>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold text-white">Card Library</h2>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={runAitbImport}
+                disabled={aitbImporting || !currentSectionId}
+                title="Adds the 10 AI Team Building activities to this board's library under Special → AI Team Building. Safe to press twice."
+                className="px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-violet-500/60 text-violet-300 hover:bg-violet-500/15 disabled:opacity-40"
+              >
+                {aitbImporting ? 'Importing…' : '✨ Import AI Team Building'}
+              </button>
+              <button onClick={() => setShowForm(!showForm)}
+                className="px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 text-sm font-medium transition-colors">
+                + Add Challenge
+              </button>
+            </div>
+          </div>
+
+          {/* Compartment filter chips */}
+          <div className="flex gap-2 flex-wrap mb-5">
+            <button
+              onClick={() => setLibraryCompartmentFilter('all')}
+              className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${libraryCompartmentFilter === 'all' ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+            >
+              All Compartments ({tasks.filter(t => isMineRow(t.owner_id)).length})
+            </button>
+            {myBoards.map(s => (
+              <button
+                key={s.id}
+                onClick={() => setLibraryCompartmentFilter(s.id)}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${libraryCompartmentFilter === s.id ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+              >
+                {s.name} ({tasks.filter(t => t.section_id === s.id).length})
+                {activeBoardPointer === s.id && <span className="ml-1 text-green-400">●</span>}
+              </button>
+            ))}
+          </div>
+
+          {/* New challenge form (scoped to current section) */}
+          {showForm && (
+            <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+              <h3 className="font-bold text-gray-900 mb-1">New Challenge</h3>
+              {currentSectionId && (
+                <p className="text-xs text-gray-400 mb-4">
+                  Adding to: <span className="font-bold text-gray-600">{sections.find(s => s.id === currentSectionId)?.name}</span>
+                  {' '}— change compartment via the section switcher in the header
+                </p>
+              )}
+              <div className="flex flex-col gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                  <input type="text" value={formTitle} onChange={e => setFormTitle(e.target.value)}
+                    placeholder="e.g. Water Challenge"
+                    className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-violet-500" autoFocus />
+                </div>
+                <div className="flex gap-3">
+                  <div className="flex-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                    <select value={formCategory} onChange={async e => {
+                      if (e.target.value === '__new__') {
+                        if (!currentSectionId) return
+                        const name = await promptAndCreateCategory(currentSectionId)
+                        if (name) setFormCategory(name)
+                        return
+                      }
+                      setFormCategory(e.target.value)
+                    }}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white">
+                      <option value="">— Uncategorized —</option>
+                      {categories.filter(c => c.section_id === currentSectionId).map(c => (
+                        <option key={c.id} value={c.name}>{c.name}</option>
+                      ))}
+                      <option value="__new__">+ New category…</option>
+                    </select>
+                  </div>
+                  <div className="w-24">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Points</label>
+                    <input type="number" value={formPoints} min={0}
+                      onChange={e => setFormPoints(Math.max(0, parseInt(e.target.value) || 0))}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-violet-500 text-center font-bold" />
+                  </div>
+                </div>
+                <ColorPicker hex={formHex} colorName={formColor} onHexChange={setFormHex} onNameChange={setFormColor} />
+                {/* Type toggle */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Card Type</label>
+                  <div className="flex rounded-lg overflow-hidden border border-gray-300">
+                    <button type="button" onClick={() => setFormTaskType('standard')}
+                      className={`flex-1 py-2 text-sm font-bold transition-colors ${formTaskType === 'standard' ? 'bg-violet-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                      Standard
+                    </button>
+                    <button type="button" onClick={() => setFormTaskType('answer')}
+                      className={`flex-1 py-2 text-sm font-bold transition-colors ${formTaskType === 'answer' ? 'bg-violet-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                      Answer Input
+                    </button>
+                  </div>
+                </div>
+                {formTaskType === 'answer' && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Question / Prompt</label>
+                      <input type="text" value={formAnswerQuestion} onChange={e => setFormAnswerQuestion(e.target.value)}
+                        placeholder="e.g. What is the name of this landmark?"
+                        className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-violet-500" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Answer Template</label>
+                      <p className="text-xs text-gray-400 mb-1">One answer per line. Each line becomes a row of letter boxes.</p>
+                      <textarea value={formAnswerText} onChange={e => setFormAnswerText(e.target.value)}
+                        placeholder={"e.g.\nPETRONAS\nTWIN TOWERS"}
+                        rows={3}
+                        className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-violet-500 font-mono text-sm resize-none" />
+                    </div>
+                  </>
+                )}
+                <div className="flex gap-3">
+                  <button onClick={createTask} disabled={formSaving || !formTitle.trim() || !formColor.trim()}
+                    className="px-6 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 text-sm transition-colors">
+                    {formSaving ? 'Creating...' : 'Create Challenge'}
+                  </button>
+                  <button onClick={() => setShowForm(false)}
+                    className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm transition-colors">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Compartment > Category > Cards hierarchy */}
+          {tasks.length === 0 ? (
+            <p className="text-gray-400 text-center py-8 bg-white rounded-xl border border-gray-200">
+              No challenges yet. Click "Add Challenge" to create one.
+            </p>
+          ) : (
+            <div className="flex flex-col gap-10">
+              {groupedLibrary.map(({ section, categories: categoryGroups, totalTasks }) => (
+                <div key={section.id}>
+                  {/* Compartment header */}
+                  <div className="flex items-center gap-3 mb-3">
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-base font-black text-white uppercase tracking-wider">{section.name}</h2>
+                      {activeBoardPointer === section.id && (
+                        <span className="text-[10px] font-black text-green-400 bg-green-950/60 border border-green-800 px-1.5 py-0.5 rounded uppercase">Live</span>
+                      )}
+                      {section.foreign && (
+                        <span className="text-[10px] font-black text-sky-400 bg-sky-950/60 border border-sky-800 px-1.5 py-0.5 rounded uppercase" title="Shared cards — adding one to your board creates your own independent copy">Shared</span>
+                      )}
+                    </div>
+                    <span className="text-xs text-gray-500 font-medium">{totalTasks} cards</span>
+                    <div className="flex-1 h-px bg-white/10" />
+                    {!section.foreign && (
+                      <>
+                        <button
+                          onClick={() => setShowCategoryManager(showCategoryManager === section.id ? null : section.id)}
+                          className={`text-xs font-bold transition-colors flex-shrink-0 px-2 py-0.5 rounded ${
+                            showCategoryManager === section.id
+                              ? 'bg-violet-900/50 text-violet-400'
+                              : 'text-gray-500 hover:text-violet-400'
+                          }`}
+                        >
+                          Categories ({categories.filter(c => c.section_id === section.id).length})
+                        </button>
+                        <button
+                          onClick={() => { setCurrentSectionId(section.id); setActiveTab('board') }}
+                          className="text-xs text-violet-600 hover:text-violet-800 font-bold transition-colors flex-shrink-0"
+                        >
+                          Open Board →
+                        </button>
+                      </>
+                    )}
+                  </div>
+
+                  {/* Category manager panel */}
+                  {showCategoryManager === section.id && (
+                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-5">
+                      <p className="text-xs font-black text-gray-500 uppercase tracking-widest mb-3">Manage Categories</p>
+                      <div className="flex flex-col gap-1.5 mb-3">
+                        {categories.filter(c => c.section_id === section.id).length === 0 ? (
+                          <p className="text-xs text-gray-400 italic">No categories yet — add one below.</p>
+                        ) : (
+                          categories.filter(c => c.section_id === section.id).map(cat => {
+                            const cardCount = tasks.filter(t => t.section_id === section.id && t.category === cat.name).length
+                            return (
+                              <div key={cat.id} className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-1.5">
+                                <input
+                                  type="text"
+                                  defaultValue={cat.name}
+                                  key={`${cat.id}-${cat.name}`}
+                                  onBlur={e => renameCategory(cat.id, section.id, e.target.value)}
+                                  onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                                  className="flex-1 text-sm font-medium text-gray-800 bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-violet-400 rounded px-1"
+                                />
+                                <span className="text-xs text-gray-400 flex-shrink-0">{cardCount} card{cardCount !== 1 ? 's' : ''}</span>
+                                <button
+                                  onClick={() => deleteCategory(cat.id, section.id)}
+                                  className="text-xs text-red-400 hover:text-red-600 transition-colors flex-shrink-0 px-1"
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            )
+                          })
+                        )}
+                      </div>
+                      <div className="flex gap-2">
+                        <input
+                          type="text"
+                          value={newCategoryName}
+                          onChange={e => setNewCategoryName(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') createCategory(section.id) }}
+                          placeholder="New category name…"
+                          className="flex-1 px-3 py-1.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                        />
+                        <button
+                          onClick={() => createCategory(section.id)}
+                          disabled={!newCategoryName.trim()}
+                          className="px-4 py-1.5 bg-violet-600 text-white rounded-lg text-sm font-bold hover:bg-violet-700 disabled:opacity-40"
+                        >
+                          Add
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Categories within this compartment */}
+                  <div className="flex flex-col gap-8">
+                    {categoryGroups.length === 0 ? (
+                      <p className="text-gray-300 text-sm pl-4">No cards in this compartment.</p>
+                    ) : (
+                      categoryGroups.map(group => (
+                        <div key={group.key}>
+                          {/* Category subheader */}
+                          <div className="flex items-center gap-3 mb-3 pl-4">
+                            <h3 className="text-xs font-black text-gray-400 uppercase tracking-widest">{group.label}</h3>
+                            <span className="text-xs text-gray-300 font-medium">{group.tasks.length}</span>
+                            <div className="flex-1 h-px bg-gray-100" />
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              <span className="text-xs text-gray-400">color for all:</span>
+                              <input type="color" defaultValue={group.tasks[0]?.hex_code ?? '#3B82F6'}
+                                key={section.id + group.key + '-color'}
+                                className="w-7 h-7 rounded cursor-pointer border border-gray-200"
+                                onChange={e => setBulkCategoryColor(group.key, e.target.value)}
+                                title={`Set color for all ${group.label} tasks`} />
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              <span className="text-xs text-gray-400">pts for all:</span>
+                              <input type="number" min={0} defaultValue={group.tasks[0]?.points ?? 0}
+                                key={section.id + group.key + '-pts'}
+                                className="w-14 px-1.5 py-0.5 text-xs border border-white/20 bg-gray-800 text-white rounded text-center font-bold focus:outline-none focus:ring-1 focus:ring-violet-500"
+                                onBlur={e => setBulkCategoryPoints(group.key, Math.max(0, parseInt(e.target.value) || 0))}
+                                onKeyDown={e => { if (e.key === 'Enter') setBulkCategoryPoints(group.key, Math.max(0, parseInt((e.target as HTMLInputElement).value) || 0)) }}
+                                title={`Set points for all ${group.label} tasks`} />
+                            </div>
+                          </div>
+
+                          {/* Cards grid */}
+                          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 pl-4">
+                            {group.tasks.map(task => (
+                              <div key={task.id} className="rounded-2xl overflow-hidden flex flex-col shadow-sm"
+                                style={{ backgroundColor: task.hex_code }}>
+                                <div className="px-4 pt-4 pb-3 flex-1">
+                                  <p className="text-white/70 text-xs font-bold uppercase tracking-widest mb-1">{task.color}</p>
+                                  <h3 className="text-white font-black text-lg leading-tight">{task.title}</h3>
+                                  {section.foreign ? (
+                                    task.category && (
+                                      <p className="mt-1.5 text-white/50 text-xs">📂 {task.category}</p>
+                                    )
+                                  ) : editingCategoryId === task.id ? (
+                                    <select
+                                      autoFocus
+                                      defaultValue={task.category || ''}
+                                      onChange={e => saveCategoryInline(task.id, e.target.value)}
+                                      onBlur={() => setEditingCategoryId(null)}
+                                      className="w-full bg-black/20 text-white text-xs px-2 py-1 rounded border border-white/30 focus:outline-none focus:border-white/60 mt-2"
+                                    >
+                                      <option value="">— Uncategorized —</option>
+                                      {categories.filter(c => c.section_id === task.section_id).map(c => (
+                                        <option key={c.id} value={c.name}>{c.name}</option>
+                                      ))}
+                                      <option value="__new__">+ New category…</option>
+                                    </select>
+                                  ) : (
+                                    <button
+                                      onClick={() => setEditingCategoryId(task.id)}
+                                      className="mt-1.5 text-white/50 text-xs hover:text-white/80 transition-colors text-left block">
+                                      {task.category ? `📂 ${task.category}` : '+ category'}
+                                    </button>
+                                  )}
+                                  <div className="flex items-center gap-2 mt-2">
+                                    <p className="text-white/50 text-xs">
+                                      {scans.filter(s => s.task_id === task.id && s.completed).length} completed ·{' '}
+                                      {scans.filter(s => s.task_id === task.id).length} scanned
+                                    </p>
+                                    {(task.points ?? 0) > 0 && (
+                                      <span className="bg-black/30 text-white/80 text-[10px] font-black rounded px-1.5 py-0.5">{task.points} pts</span>
+                                    )}
+                                  </div>
+                                  <p className="text-white/40 text-xs mt-0.5">
+                                    {(() => {
+                                      const n = boardCountByTask.get(task.id) ?? 0
+                                      return n > 0 ? `✓ On ${n} board${n > 1 ? 's' : ''}` : 'Not on any board'
+                                    })()}
+                                  </p>
+                                  {!section.foreign && (
+                                    <button
+                                      onClick={async () => {
+                                        const newVal = !task.require_marshal
+                                        setTasks(prev => prev.map(t => t.id === task.id ? { ...t, require_marshal: newVal } : t))
+                                        await supabase.from('bingo_tasks').update({ require_marshal: newVal }).eq('id', task.id)
+                                      }}
+                                      className={`mt-1.5 text-xs font-bold px-2 py-0.5 rounded-full transition-colors ${
+                                        task.require_marshal
+                                          ? 'bg-yellow-400/30 text-yellow-200 hover:bg-yellow-400/50'
+                                          : 'bg-white/10 text-white/30 hover:bg-white/20'
+                                      }`}
+                                    >
+                                      {task.require_marshal ? '🔒 Marshal ON' : '🔓 Marshal OFF'}
+                                    </button>
+                                  )}
+
+                                  {/* ── Contending mode ──────────────────────
+                                      Turns this card into a head-to-head duel:
+                                      the challenger scans another team's QR,
+                                      both phones unlock the same clue, and the
+                                      marshal declares the winner. */}
+                                  {!section.foreign && (
+                                    <div className="mt-1.5">
+                                      <button
+                                        onClick={async () => {
+                                          const newVal = !task.is_contest
+                                          setTasks(prev => prev.map(t => t.id === task.id ? { ...t, is_contest: newVal } : t))
+                                          await supabase.from('bingo_tasks').update({ is_contest: newVal }).eq('id', task.id)
+                                        }}
+                                        className={`text-xs font-bold px-2 py-0.5 rounded-full transition-colors ${
+                                          task.is_contest
+                                            ? 'bg-red-500/40 text-red-100 hover:bg-red-500/60'
+                                            : 'bg-white/10 text-white/30 hover:bg-white/20'
+                                        }`}
+                                      >
+                                        {task.is_contest ? '⚔️ Contending ON' : '⚔️ Contending OFF'}
+                                      </button>
+
+                                      {task.is_contest && (
+                                        <div className="mt-2 p-2 rounded-lg bg-black/30 space-y-2">
+                                          <div>
+                                            <label className="block text-white/40 text-[10px] font-black uppercase tracking-wider mb-1">Game</label>
+                                            <select
+                                              value={task.contest_game || 'speed-edit'}
+                                              onChange={async e => {
+                                                const v = e.target.value
+                                                setTasks(prev => prev.map(t => t.id === task.id ? { ...t, contest_game: v } : t))
+                                                await supabase.from('bingo_tasks').update({ contest_game: v }).eq('id', task.id)
+                                              }}
+                                              className="w-full bg-black/40 text-white text-xs px-2 py-1 rounded border border-white/25 focus:outline-none focus:border-white/60"
+                                            >
+                                              {CONTEST_GAMES.map(g => (
+                                                <option key={g.key} value={g.key}>{g.emoji} {g.name}</option>
+                                              ))}
+                                            </select>
+                                            <p className="text-white/40 text-[10px] mt-1 leading-snug">
+                                              {getContestGame(task.contest_game).tagline}
+                                            </p>
+                                          </div>
+                                          <div>
+                                            <label className="block text-white/40 text-[10px] font-black uppercase tracking-wider mb-1">
+                                              Winner bonus
+                                            </label>
+                                            <input
+                                              type="number"
+                                              min={0}
+                                              defaultValue={task.contest_bonus ?? 0}
+                                              key={`${task.id}-cbonus-${task.contest_bonus ?? 0}`}
+                                              onBlur={async e => {
+                                                const v = Math.max(0, parseInt(e.target.value) || 0)
+                                                if (v === (task.contest_bonus ?? 0)) return
+                                                setTasks(prev => prev.map(t => t.id === task.id ? { ...t, contest_bonus: v } : t))
+                                                await supabase.from('bingo_tasks').update({ contest_bonus: v }).eq('id', task.id)
+                                              }}
+                                              className="w-20 bg-black/40 text-white text-xs px-2 py-1 rounded border border-white/25 text-center font-bold focus:outline-none focus:border-white/60"
+                                            />
+                                            <p className="text-white/40 text-[10px] mt-1 leading-snug">
+                                              Extra points for the duel winner. The challenger still crosses this
+                                              tile off and banks its {task.points ?? 0} pts either way.
+                                            </p>
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  )}
+                                </div>
+                                {section.foreign ? (
+                                  <div className="px-3 pb-3">
+                                    <button onClick={() => addCardFromLibrary(task)}
+                                      className="w-full px-3 py-1.5 bg-white/20 rounded-lg text-white text-xs font-bold hover:bg-white/30 transition-colors"
+                                      title="Copies this card into your board — the original stays untouched">
+                                      + Add to board
+                                    </button>
+                                  </div>
+                                ) : (
+                                <div className="px-3 pb-3 flex flex-wrap gap-1.5">
+                                  <button onClick={() => navigate(`/bingo-dash/admin/task/${task.id}`)}
+                                    className="px-3 py-1.5 bg-white/20 rounded-lg text-white text-xs font-bold hover:bg-white/30 transition-colors">Edit</button>
+                                  <button onClick={() => setQrTask(task)}
+                                    className="px-3 py-1.5 bg-white/20 rounded-lg text-white text-xs font-bold hover:bg-white/30 transition-colors">QR</button>
+                                  <button onClick={() => copyLink(task.id)}
+                                    className="px-3 py-1.5 bg-white/20 rounded-lg text-white text-xs font-bold hover:bg-white/30 transition-colors">
+                                    {copiedId === task.id ? '✓' : '🔗'}
+                                  </button>
+                                  <button onClick={() => duplicateTask(task)}
+                                    className="px-3 py-1.5 bg-white/20 rounded-lg text-white text-xs font-bold hover:bg-white/30 transition-colors"
+                                    title="Duplicate this card">⎘ Copy</button>
+                                  <button onClick={() => openTileEdit(task)}
+                                    className="px-3 py-1.5 bg-white/20 rounded-lg text-white text-xs font-bold hover:bg-white/30 transition-colors"
+                                    title="Move to another section">Move</button>
+                                  <button onClick={() => deleteTask(task.id, task.title)}
+                                    className="px-3 py-1.5 bg-red-500/30 rounded-lg text-white text-xs font-bold hover:bg-red-500/50 transition-colors">Delete</button>
+                                </div>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
+        )}
+
+        {/* ── Challenges gallery (Board tab, scoped to current section) ──────── */}
+        {activeTab === 'board' && <section>
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold text-white">Challenges</h2>
+            <button onClick={() => setShowForm(!showForm)}
+              className="px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 text-sm font-medium transition-colors">
+              + Add Challenge
+            </button>
+          </div>
+
+          {/* ── Section manager (challenge sections group categories) ── */}
+          {(() => {
+            const currentCS = challengeSections.filter(cs => cs.game_section_id === currentSectionId)
+            const currentCats = categories.filter(c => c.section_id === currentSectionId)
+            return (
+              <div className="mb-5">
+                <div className="flex items-center gap-2 mb-2">
+                  <button
+                    onClick={() => setShowChallengeSectionManager(v => !v)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 ${
+                      showChallengeSectionManager ? 'bg-violet-900/50 text-violet-300 border border-violet-700' : 'bg-white/10 text-gray-400 hover:bg-white/15 hover:text-white'
+                    }`}
+                  >
+                    ▤ Sections ({currentCS.length})
+                  </button>
+                  {currentCS.map(cs => (
+                    <span key={cs.id} className="px-2.5 py-1 bg-violet-900/40 border border-violet-700 text-violet-400 rounded-lg text-xs font-bold">
+                      {cs.name}
+                    </span>
+                  ))}
+                </div>
+
+                {showChallengeSectionManager && (
+                  <div className="bg-gray-800/60 border border-white/10 rounded-xl p-4 mb-4">
+                    <p className="text-xs font-black text-gray-400 uppercase tracking-widest mb-3">Manage Sections</p>
+
+                    {/* Existing sections */}
+                    <div className="flex flex-col gap-2 mb-3">
+                      {currentCS.length === 0 ? (
+                        <p className="text-xs text-gray-400 italic">No sections yet — create one below to group your categories.</p>
+                      ) : (
+                        currentCS.map(cs => {
+                          const assignedCats = currentCats.filter(c => c.challenge_section_id === cs.id)
+                          return (
+                            <div key={cs.id} className="bg-white border border-gray-200 rounded-lg px-3 py-2">
+                              <div className="flex items-center gap-2 mb-1.5">
+                                {renamingCSId === cs.id ? (
+                                  <input
+                                    autoFocus
+                                    value={renamingCSName}
+                                    onChange={e => setRenamingCSName(e.target.value)}
+                                    onBlur={() => renameChallengeSection(cs.id, renamingCSName)}
+                                    onKeyDown={e => {
+                                      if (e.key === 'Enter') renameChallengeSection(cs.id, renamingCSName)
+                                      if (e.key === 'Escape') setRenamingCSId(null)
+                                    }}
+                                    className="flex-1 text-sm font-bold text-gray-800 bg-transparent border-b border-violet-400 focus:outline-none px-1"
+                                  />
+                                ) : (
+                                  <span className="flex-1 text-sm font-bold text-gray-800">{cs.name}</span>
+                                )}
+                                <button
+                                  onClick={() => { setRenamingCSId(cs.id); setRenamingCSName(cs.name) }}
+                                  className="text-xs text-gray-400 hover:text-violet-600 transition-colors px-1"
+                                >Rename</button>
+                                <button
+                                  onClick={() => deleteChallengeSection(cs.id)}
+                                  className="text-xs text-red-400 hover:text-red-600 transition-colors px-1"
+                                >Delete</button>
+                              </div>
+                              {/* Category assignment */}
+                              <div className="flex flex-wrap gap-1.5">
+                                {currentCats.length === 0 ? (
+                                  <span className="text-xs text-gray-300 italic">No categories yet</span>
+                                ) : (
+                                  currentCats.map(cat => {
+                                    const isAssigned = cat.challenge_section_id === cs.id
+                                    return (
+                                      <button
+                                        key={cat.id}
+                                        onClick={() => assignCategoryToSection(cat.id, isAssigned ? null : cs.id)}
+                                        className={`px-2 py-0.5 rounded text-xs font-bold transition-colors ${
+                                          isAssigned
+                                            ? 'bg-violet-600 text-white'
+                                            : 'bg-gray-100 text-gray-500 hover:bg-violet-100 hover:text-violet-700'
+                                        }`}
+                                      >
+                                        {cat.name}
+                                      </button>
+                                    )
+                                  })
+                                )}
+                              </div>
+                              {assignedCats.length > 0 && (
+                                <p className="text-xs text-gray-400 mt-1">
+                                  {assignedCats.length} categor{assignedCats.length !== 1 ? 'ies' : 'y'} assigned
+                                </p>
+                              )}
+                            </div>
+                          )
+                        })
+                      )}
+                    </div>
+
+                    {/* Create new section */}
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={newChallengeSectionName}
+                        onChange={e => setNewChallengeSectionName(e.target.value)}
+                        onKeyDown={e => { if (e.key === 'Enter') createChallengeSection() }}
+                        placeholder="New section name…"
+                        className="flex-1 px-3 py-1.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-violet-500"
+                      />
+                      <button
+                        onClick={createChallengeSection}
+                        disabled={!newChallengeSectionName.trim()}
+                        className="px-4 py-1.5 bg-violet-600 text-white rounded-lg text-sm font-bold hover:bg-violet-700 disabled:opacity-40"
+                      >
+                        + Add Section
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+
+          {/* Category filter chips */}
+          {allCategories.length > 0 && (
+            <div className="flex gap-2 flex-wrap mb-5">
+              <button onClick={() => setCategoryFilter('all')}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${categoryFilter === 'all' ? 'bg-violet-600 text-white shadow-lg shadow-violet-900/60 ring-1 ring-violet-400/40' : 'bg-white/10 text-gray-400 hover:bg-white/20 hover:text-white'}`}>
+                All ({scopedTasks.length})
+              </button>
+              {allCategories.map(cat => (
+                <button key={cat} onClick={() => setCategoryFilter(cat)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${categoryFilter === cat ? 'bg-violet-600 text-white shadow-lg shadow-violet-900/60 ring-1 ring-violet-400/40' : 'bg-white/10 text-gray-400 hover:bg-white/20 hover:text-white'}`}>
+                  {cat} ({scopedTasks.filter(t => t.category === cat).length})
+                </button>
+              ))}
+              {scopedTasks.some(t => !t.category) && (
+                <button onClick={() => setCategoryFilter('__none__')}
+                  className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${categoryFilter === '__none__' ? 'bg-violet-600 text-white shadow-lg shadow-violet-900/60 ring-1 ring-violet-400/40' : 'bg-white/10 text-gray-400 hover:bg-white/20 hover:text-white'}`}>
+                  Uncategorized ({scopedTasks.filter(t => !t.category).length})
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* New challenge form */}
+          {showForm && (
+            <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
+              <h3 className="font-bold text-gray-900 mb-4">New Challenge</h3>
+              <div className="flex flex-col gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                  <input type="text" value={formTitle} onChange={e => setFormTitle(e.target.value)}
+                    placeholder="e.g. Water Challenge"
+                    className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-violet-500" autoFocus />
+                </div>
+                <div className="flex gap-3">
+                  <div className="flex-1">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                    <select value={formCategory} onChange={async e => {
+                      if (e.target.value === '__new__') {
+                        if (!currentSectionId) return
+                        const name = await promptAndCreateCategory(currentSectionId)
+                        if (name) setFormCategory(name)
+                        return
+                      }
+                      setFormCategory(e.target.value)
+                    }}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white">
+                      <option value="">— Uncategorized —</option>
+                      {categories.filter(c => c.section_id === currentSectionId).map(c => (
+                        <option key={c.id} value={c.name}>{c.name}</option>
+                      ))}
+                      <option value="__new__">+ New category…</option>
+                    </select>
+                  </div>
+                  <div className="w-24">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Points</label>
+                    <input type="number" value={formPoints} min={0}
+                      onChange={e => setFormPoints(Math.max(0, parseInt(e.target.value) || 0))}
+                      className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-violet-500 text-center font-bold" />
+                  </div>
+                </div>
+                <ColorPicker hex={formHex} colorName={formColor} onHexChange={setFormHex} onNameChange={setFormColor} />
+                {/* Type toggle */}
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Card Type</label>
+                  <div className="flex rounded-lg overflow-hidden border border-gray-300">
+                    <button type="button" onClick={() => setFormTaskType('standard')}
+                      className={`flex-1 py-2 text-sm font-bold transition-colors ${formTaskType === 'standard' ? 'bg-violet-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                      Standard
+                    </button>
+                    <button type="button" onClick={() => setFormTaskType('answer')}
+                      className={`flex-1 py-2 text-sm font-bold transition-colors ${formTaskType === 'answer' ? 'bg-violet-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                      Answer Input
+                    </button>
+                  </div>
+                </div>
+                {formTaskType === 'answer' && (
+                  <>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Question / Prompt</label>
+                      <input type="text" value={formAnswerQuestion} onChange={e => setFormAnswerQuestion(e.target.value)}
+                        placeholder="e.g. What is the name of this landmark?"
+                        className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-violet-500" />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 mb-1">Answer Template</label>
+                      <p className="text-xs text-gray-400 mb-1">One answer per line. Each line becomes a row of letter boxes.</p>
+                      <textarea value={formAnswerText} onChange={e => setFormAnswerText(e.target.value)}
+                        placeholder={"e.g.\nPETRONAS\nTWIN TOWERS"}
+                        rows={3}
+                        className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-violet-500 font-mono text-sm resize-none" />
+                    </div>
+                  </>
+                )}
+                <div className="flex gap-3">
+                  <button onClick={createTask} disabled={formSaving || !formTitle.trim() || !formColor.trim()}
+                    className="px-6 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-50 text-sm transition-colors">
+                    {formSaving ? 'Creating...' : 'Create Challenge'}
+                  </button>
+                  <button onClick={() => setShowForm(false)}
+                    className="px-6 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300 text-sm transition-colors">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Grouped gallery — Section → Category → Cards */}
+          {scopedTasks.length === 0 ? (
+            <p className="text-gray-400 text-center py-8 bg-white rounded-xl border border-gray-200">
+              No challenges yet. Click "Add Challenge" to create one.
+            </p>
+          ) : categoryFilter !== 'all' && groupedTasks.length === 0 ? (
+            <p className="text-gray-400 text-center py-8 bg-white rounded-xl border border-gray-200">
+              No challenges in this category.
+            </p>
+          ) : categoryFilter !== 'all' ? (
+            /* Filtered view: flat category rendering */
+            <div className="flex flex-col gap-8">
+              {groupedTasks.map(group => (
+                <CategoryGroupBlock
+                  key={group.key}
+                  group={group}
+                  editingCategoryId={editingCategoryId}
+                  setEditingCategoryId={setEditingCategoryId}
+                  categories={categories}
+                  scans={scans}
+                  copiedId={copiedId}
+                  boardCountByTask={boardCountByTask}
+                  navigate={navigate}
+                  saveCategoryInline={saveCategoryInline}
+                  setBulkCategoryColor={setBulkCategoryColor}
+                  setBulkCategoryPoints={setBulkCategoryPoints}
+                  renameCategoryByLabel={renameCategoryByLabel}
+                  setQrTask={setQrTask}
+                  copyLink={copyLink}
+                  duplicateTask={duplicateTask}
+                  openTileEdit={openTileEdit}
+                  deleteTask={deleteTask}
+                />
+              ))}
+            </div>
+          ) : (
+            /* All: two-level Section → Category rendering */
+            <div className="flex flex-col gap-10">
+              {groupedByChallengeSections.map(({ cs, groups }) => {
+                const hasSections = challengeSections.filter(s => s.game_section_id === currentSectionId).length > 0
+                return (
+                  <div key={cs?.id ?? '__unassigned__'}>
+                    {/* Challenge section header — only shown when sections exist */}
+                    {hasSections && (
+                      <div className="flex items-center gap-3 mb-4">
+                        <h2 className="text-sm font-black text-gray-300 uppercase tracking-wider">
+                          {cs?.name ?? 'Uncategorized'}
+                        </h2>
+                        <span className="text-xs text-gray-500 font-medium">
+                          {groups.reduce((n, g) => n + g.tasks.length, 0)} challenges
+                        </span>
+                        <div className="flex-1 h-px bg-white/10" />
+                      </div>
+                    )}
+                    {/* Categories within this challenge section */}
+                    <div className={`flex flex-col gap-8${hasSections ? ' pl-4' : ''}`}>
+                      {groups.length === 0 ? (
+                        <p className="text-gray-300 text-sm italic">No challenges assigned to this section yet.</p>
+                      ) : (
+                        groups.map(group => (
+                          <CategoryGroupBlock
+                            key={group.key}
+                            group={group}
+                            editingCategoryId={editingCategoryId}
+                            setEditingCategoryId={setEditingCategoryId}
+                            categories={categories}
+                            scans={scans}
+                            copiedId={copiedId}
+                            boardCountByTask={boardCountByTask}
+                            navigate={navigate}
+                            saveCategoryInline={saveCategoryInline}
+                            setBulkCategoryColor={setBulkCategoryColor}
+                            setBulkCategoryPoints={setBulkCategoryPoints}
+                            renameCategoryByLabel={renameCategoryByLabel}
+                            setQrTask={setQrTask}
+                            copyLink={copyLink}
+                            duplicateTask={duplicateTask}
+                            openTileEdit={openTileEdit}
+                            deleteTask={deleteTask}
+                          />
+                        ))
+                      )}
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </section>}
+
+        {/* ── Teams tab ────────────────────────────────────────────────────── */}
+        {activeTab === 'teams' && (
+        <section>
+          {/* Teams for the current board */}
+          {(() => {
+            const section = sections.find(s => s.id === currentSectionId)
+            if (!section) return null
+            const sectionTeams = scopedTeams
+            return (
+              <div key={section.id} className="mb-10">
+                {/* Board header */}
+                <div className="flex items-center gap-3 mb-4">
+                  <h2 className="text-base font-black text-white uppercase tracking-wider">{section.name}</h2>
+                  {activeBoardPointer === section.id && (
+                    <span className="text-[10px] font-black text-green-400 bg-green-950/60 border border-green-800 px-1.5 py-0.5 rounded uppercase">Live</span>
+                  )}
+                  <span className="text-xs text-gray-500 font-medium">{sectionTeams.length} group{sectionTeams.length !== 1 ? 's' : ''}</span>
+                  <div className="flex-1 h-px bg-white/10" />
+                  <button
+                    onClick={() => { setShowAllTeamsLink(true); setAllTeamsLinkCopied(false) }}
+                    className="px-3 py-1.5 rounded-lg text-xs font-bold text-emerald-300 border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors whitespace-nowrap"
+                    title="Share a single live link showing every group and their members"
+                  >
+                    🔗 Live Teams Link
+                  </button>
+                </div>
+
+                {/* Create group form */}
+                <div className="flex gap-2 mb-4 flex-wrap">
+                  <input
+                    type="text"
+                    value={newGroupName}
+                    onChange={e => setNewGroupName(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') createGroup(section.id) }}
+                    placeholder="Group name..."
+                    className="flex-1 min-w-[140px] px-3 py-2 rounded-lg border border-white/15 bg-gray-900 text-white placeholder-gray-600 text-sm focus:outline-none focus:border-violet-500"
+                  />
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    maxLength={4}
+                    value={newGroupPassword}
+                    onChange={e => setNewGroupPassword(e.target.value.replace(/\D/g, '').slice(0, 4))}
+                    onKeyDown={e => { if (e.key === 'Enter') createGroup(section.id) }}
+                    placeholder="4-digit password"
+                    className="w-36 px-3 py-2 rounded-lg border border-white/15 bg-gray-900 text-white placeholder-gray-600 text-sm font-mono tracking-widest text-center focus:outline-none focus:border-violet-500"
+                  />
+                  <button
+                    onClick={() => createGroup(section.id)}
+                    disabled={!newGroupName.trim() || newGroupPassword.length !== 4}
+                    className="px-4 py-2 rounded-lg text-sm font-bold text-white bg-violet-600 hover:bg-violet-500 disabled:opacity-40 transition-colors shadow-lg shadow-violet-900/30"
+                  >
+                    + Create Group
+                  </button>
+                  <button
+                    onClick={() => {
+                      const n = parseInt(prompt('How many groups to bulk create?', '16') ?? '', 10)
+                      if (Number.isFinite(n) && n > 0) bulkCreateGroups(section.id, n)
+                    }}
+                    className="px-4 py-2 rounded-lg text-sm font-bold text-gray-300 bg-white/10 hover:bg-white/15 transition-colors"
+                  >
+                    Bulk Create
+                  </button>
+                  {sectionTeams.length > 0 && (
+                    <button
+                      onClick={resetTeams}
+                      disabled={resettingTeams}
+                      className="px-4 py-2 rounded-lg text-sm font-bold text-red-300 border border-red-500/30 bg-red-500/10 hover:bg-red-500/20 disabled:opacity-40 transition-colors"
+                      title="Delete every group on this board, leaving it with no teams. Other boards are unaffected."
+                    >
+                      {resettingTeams ? 'Resetting…' : '↺ Reset Teams'}
+                    </button>
+                  )}
+                </div>
+                {sectionTeams.length > 0 && (<div className="rounded-xl border border-white/10 overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-white/10 bg-white/5">
+                        <th className="text-left px-3 py-2.5 font-bold text-gray-500 uppercase tracking-wide text-[11px] w-14">Photo</th>
+                        <th className="text-left px-3 py-2.5 font-bold text-gray-500 uppercase tracking-wide text-[11px]">Group</th>
+                        <th className="text-left px-3 py-2.5 font-bold text-gray-500 uppercase tracking-wide text-[11px] w-20">PWD</th>
+                        <th className="text-left px-3 py-2.5 font-bold text-gray-500 uppercase tracking-wide text-[11px] w-28">Members</th>
+                        <th className="text-left px-3 py-2.5 font-bold text-gray-500 uppercase tracking-wide text-[11px]">Board</th>
+                        <th className="text-left px-3 py-2.5 font-bold text-gray-500 uppercase tracking-wide text-[11px] w-36">Progress</th>
+                        <th className="text-left px-3 py-2.5 font-bold text-gray-500 uppercase tracking-wide text-[11px] w-16" title="Bonus points from other games">Bonus</th>
+                        <th className="text-right px-3 py-2.5 font-bold text-gray-500 uppercase tracking-wide text-[11px] w-36">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-white/5">
+                      {sectionTeams.map(team => {
+                        const teamScans = scans.filter(s => s.team_id === team.id)
+                        const sectionGridTasks = boardTasksForSection(section.id)
+                        const gridTaskIds = new Set(sectionGridTasks.map(t => t.id))
+                        const completedCount = teamScans.filter(s => s.completed && gridTaskIds.has(s.task_id)).length
+                        const completedIds = new Set(teamScans.filter(s => s.completed).map(s => s.task_id))
+                        // Tile points plus any contest bonuses this team won in
+                        // duels — the latter is a defender's only scoring record.
+                        const pointsEarned = teamScans
+                          .filter(s => s.completed && gridTaskIds.has(s.task_id))
+                          .reduce((sum, s) => sum + (sectionGridTasks.find(t => t.id === s.task_id)?.points ?? 0), 0)
+                          + (duelBonuses.get(team.id) ?? 0)
+                        const pct = sectionGridTasks.length > 0 ? Math.round((completedCount / sectionGridTasks.length) * 100) : 0
+                        const teamSlots = buildBingoSlots(sectionGridTasks)
+                        const teamBingoLines = completedBingoLines(teamSlots, completedIds).length
+                        const teamMembers = members.filter(m => m.team_id === team.id)
+                        const isFull = teamMembers.length >= 4
+                        return (
+                          <tr key={team.id} className="hover:bg-white/5 transition-colors group">
+                            {/* Photo */}
+                            <td className="px-3 py-2.5">
+                              <div className="relative group/photo">
+                                <label
+                                  className={`block w-9 h-9 rounded-full overflow-hidden border-2 ${team.photo_url ? 'border-violet-500/60' : 'border-dashed border-white/20'} bg-white/5 cursor-pointer hover:border-violet-400 transition-colors ${uploadingTeamPhoto === team.id ? 'opacity-60' : ''}`}
+                                  title={team.photo_url ? 'Click to replace photo' : 'Click to upload photo'}
+                                >
+                                  {team.photo_url ? (
+                                    <img src={team.photo_url} alt={`${team.name} photo`} className="w-full h-full object-cover" />
+                                  ) : (
+                                    <div className="w-full h-full flex items-center justify-center text-gray-600 text-base">
+                                      {uploadingTeamPhoto === team.id ? '…' : '+'}
+                                    </div>
+                                  )}
+                                  <input
+                                    type="file"
+                                    accept="image/*"
+                                    className="hidden"
+                                    disabled={uploadingTeamPhoto === team.id}
+                                    onChange={e => {
+                                      const f = e.target.files?.[0]
+                                      e.target.value = ''
+                                      if (f) uploadTeamPhoto(team.id, f)
+                                    }}
+                                  />
+                                </label>
+                                {team.photo_url && uploadingTeamPhoto !== team.id && (
+                                  <button
+                                    type="button"
+                                    onClick={() => removeTeamPhoto(team.id)}
+                                    className="absolute -top-1 -right-1 w-4 h-4 rounded-full bg-red-500 text-white text-[10px] font-bold leading-none flex items-center justify-center opacity-0 group-hover/photo:opacity-100 transition-opacity shadow"
+                                    title="Remove photo"
+                                  >
+                                    &times;
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                            {/* Group name */}
+                            <td className="px-3 py-2.5">
+                              <input
+                                type="text"
+                                defaultValue={team.name}
+                                key={`${team.id}-name-${team.name}`}
+                                onBlur={e => {
+                                  const v = e.target.value.trim()
+                                  if (v && v !== team.name) updateTeam(team.id, { name: v })
+                                  else e.target.value = team.name
+                                }}
+                                onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                                className="w-full px-2 py-1 rounded border border-transparent hover:border-white/20 focus:border-violet-500 focus:outline-none font-medium text-white bg-transparent text-sm"
+                              />
+                            </td>
+                            {/* Password */}
+                            <td className="px-3 py-2.5">
+                              <input
+                                type="text"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                maxLength={4}
+                                defaultValue={team.password}
+                                placeholder="—"
+                                key={`${team.id}-pwd-${team.password}`}
+                                onBlur={e => {
+                                  const v = e.target.value.replace(/\D/g, '').slice(0, 4)
+                                  if (v !== team.password) updateTeam(team.id, { password: v })
+                                  e.target.value = v
+                                }}
+                                onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                                className={`w-16 px-2 py-1 rounded border border-transparent hover:border-white/20 focus:border-violet-500 focus:outline-none font-mono tracking-widest text-center bg-transparent text-sm ${
+                                  team.password ? 'text-gray-300' : 'text-gray-600'
+                                }`}
+                                title={team.password ? 'Team password' : 'Not set — enter a 4-digit password'}
+                              />
+                            </td>
+                            {/* Members */}
+                            <td className="px-3 py-2.5">
+                              <div className="flex flex-col gap-0.5">
+                                <span className={`text-sm font-bold ${isFull ? 'text-red-400' : 'text-gray-300'}`}>
+                                  {teamMembers.length} / 4
+                                </span>
+                                {teamMembers.length > 0 && (
+                                  <div className="flex flex-col gap-0.5">
+                                    {teamMembers.map(m => (
+                                      <div key={m.id} className="flex items-center gap-1 group/m">
+                                        <span className="text-[11px] text-gray-400 truncate max-w-[72px]">{m.name}</span>
+                                        <select
+                                          value=""
+                                          onChange={e => { if (e.target.value) moveMember(m.id, e.target.value) }}
+                                          className="text-[9px] bg-transparent text-gray-600 hover:text-gray-400 cursor-pointer outline-none border-none opacity-0 group-hover/m:opacity-100 transition-opacity"
+                                          title={`Move ${m.name}`}
+                                        >
+                                          <option value="">Move…</option>
+                                          {sectionTeams.filter(t => t.id !== team.id).map(t => (
+                                            <option key={t.id} value={t.id}>{t.name}</option>
+                                          ))}
+                                        </select>
+                                        <button
+                                          type="button"
+                                          onClick={() => removeMember(m.id, m.name, team.name)}
+                                          className="w-3.5 h-3.5 rounded-full bg-white/10 hover:bg-red-500 hover:text-white text-gray-500 text-[9px] font-bold leading-none flex items-center justify-center transition-colors opacity-0 group-hover/m:opacity-100"
+                                          title={`Remove ${m.name}`}
+                                        >
+                                          &times;
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                            {/* Board/Compartment */}
+                            <td className="px-3 py-2.5">
+                              <select
+                                value={team.section_id}
+                                onChange={e => moveTeamToSection(team.id, e.target.value)}
+                                className="px-2 py-1 rounded border border-white/15 text-xs bg-gray-800 text-gray-300 focus:outline-none focus:border-violet-500"
+                              >
+                                {myBoards.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                              </select>
+                            </td>
+                            {/* Progress + Bingos */}
+                            <td className="px-3 py-2.5">
+                              <div className="flex items-center gap-1.5 mb-0.5">
+                                <div className="flex-1 h-1 bg-white/10 rounded-full overflow-hidden">
+                                  <div className="h-full bg-green-500 transition-all" style={{ width: `${pct}%` }} />
+                                </div>
+                                <span className="text-[11px] text-gray-500 font-mono whitespace-nowrap">
+                                  {completedCount}/{sectionGridTasks.length}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[11px] font-black text-amber-500">{teamBingoLines}</span>
+                                <span className="text-[11px] text-gray-600">bingos</span>
+                                {pointsEarned > 0 && (
+                                  <span className="text-[11px] text-gray-600 font-bold">{pointsEarned}pts</span>
+                                )}
+                              </div>
+                            </td>
+                            {/* Bonus */}
+                            <td className="px-3 py-2.5">
+                              {(() => {
+                                const bonusTotal = team.bonus_points ?? 0
+                                const itemCount = (team.bonus_breakdown ?? []).length
+                                return (
+                                  <button
+                                    onClick={() => openBonusModal(team)}
+                                    title="Edit bonus points — add activities and points for each"
+                                    className={`min-w-[3.5rem] px-2.5 py-1 rounded-lg border font-mono text-center text-sm transition-colors ${
+                                      bonusTotal !== 0
+                                        ? 'border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
+                                        : 'border-white/15 bg-transparent text-gray-500 hover:border-white/30 hover:text-gray-300'
+                                    }`}
+                                  >
+                                    {bonusTotal !== 0 ? (bonusTotal > 0 ? `+${bonusTotal}` : bonusTotal) : 'Add'}
+                                    {itemCount > 0 && (
+                                      <span className="ml-1 text-[10px] text-gray-500 font-sans">
+                                        ({itemCount})
+                                      </span>
+                                    )}
+                                  </button>
+                                )
+                              })()}
+                            </td>
+                            {/* Actions */}
+                            <td className="px-3 py-2.5 text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <button
+                                  onClick={() => { setMembersLinkTeam(team); setMembersLinkCopied(false) }}
+                                  className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-emerald-300 border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors whitespace-nowrap"
+                                  title="Share a live link to this group's member list"
+                                >
+                                  🔗 Members
+                                </button>
+                                <button
+                                  onClick={() => setViewingTeam(team)}
+                                  className="px-2.5 py-1 rounded-lg text-[11px] font-bold text-violet-400 border border-violet-500/30 bg-violet-500/10 hover:bg-violet-500/20 transition-colors whitespace-nowrap"
+                                >
+                                  Grid
+                                </button>
+                                <button
+                                  onClick={() => resetTeamScore(team.id, team.name)}
+                                  disabled={completedCount === 0 && (team.bonus_points ?? 0) === 0}
+                                  className="text-[11px] text-amber-500 hover:text-amber-300 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                                  title="Reset this team's scans, photo submissions, and bonus points"
+                                >
+                                  Reset
+                                </button>
+                                <button onClick={() => deleteTeam(team.id, team.name)}
+                                  className="text-[11px] text-gray-600 hover:text-red-400 transition-colors">Del</button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>)}
+              </div>
+            )
+          })()}
+          {scopedTeams.length === 0 && (
+            <p className="text-gray-400 text-sm">No groups yet. Create groups above for participants to join.</p>
+          )}
+        </section>
+        )}
+
+        {/* ── Submissions tab ──────────────────────────────────────────────── */}
+        {activeTab === 'submissions' && (() => {
+        const filteredSubmissions = photoSubmissions.filter(sub => {
+          if (submissionStatusFilter !== 'all' && sub.status !== submissionStatusFilter) return false
+          if (submissionBoardFilter === 'current') {
+            const subTeam = teams.find(t => t.id === sub.team_id)
+            if (!subTeam || subTeam.section_id !== currentSectionId) return false
+          }
+          return true
+        })
+        const selectedSubs = filteredSubmissions.filter(s => selectedSubmissionIds.has(s.id))
+        const actionTargets = selectedSubs.length > 0 ? selectedSubs : filteredSubmissions
+        const allVisibleSelected = filteredSubmissions.length > 0 && filteredSubmissions.every(s => selectedSubmissionIds.has(s.id))
+        const someVisibleSelected = filteredSubmissions.some(s => selectedSubmissionIds.has(s.id))
+        const actionLabelSuffix = selectedSubs.length > 0 ? `${selectedSubs.length} selected` : `all ${filteredSubmissions.length}`
+        return (
+        <section>
+          <div className="mb-4 flex items-start justify-between gap-4 flex-wrap">
+            <div>
+              <h2 className="text-xl font-bold text-white mb-1">Photo Submissions</h2>
+              <p className="text-xs text-gray-500">Review images submitted by groups for photo challenges. Tick a card to act on it specifically — otherwise actions apply to every submission in view.</p>
+            </div>
+          </div>
+
+          {/* Selection + bulk action bar */}
+          <div className="mb-4 flex flex-wrap items-center gap-3 p-3 rounded-xl border border-white/10 bg-white/5">
+            <label className="flex items-center gap-2 text-xs font-bold text-white cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={allVisibleSelected}
+                ref={el => { if (el) el.indeterminate = !allVisibleSelected && someVisibleSelected }}
+                onChange={e => setAllSubmissionsSelected(filteredSubmissions, e.target.checked)}
+                disabled={filteredSubmissions.length === 0}
+                className="w-4 h-4 accent-violet-500"
+              />
+              Select all
+            </label>
+            {selectedSubs.length > 0 && (
+              <button
+                onClick={() => setSelectedSubmissionIds(new Set())}
+                className="text-xs text-gray-400 hover:text-white underline"
+              >
+                Clear ({selectedSubs.length})
+              </button>
+            )}
+            <div className="flex-1" />
+            <button
+              onClick={() => bulkSetStatus(actionTargets, 'approved')}
+              disabled={bulkActioning || actionTargets.length === 0}
+              className="px-4 py-2 rounded-lg text-xs font-bold bg-green-500 text-white hover:bg-green-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              ✓ Approve {actionLabelSuffix}
+            </button>
+            <button
+              onClick={() => bulkSetStatus(actionTargets, 'rejected')}
+              disabled={bulkActioning || actionTargets.length === 0}
+              className="px-4 py-2 rounded-lg text-xs font-bold bg-red-500/20 text-red-300 border border-red-500/30 hover:bg-red-500/30 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              ✗ Reject {actionLabelSuffix}
+            </button>
+            <button
+              onClick={() => downloadSubmissionsZip(actionTargets)}
+              disabled={downloadingZip || actionTargets.length === 0}
+              className="px-4 py-2 rounded-lg text-xs font-bold bg-violet-500 text-white hover:bg-violet-600 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              title="Download these images as a ZIP. Filenames are <group>__<station>.jpg, sorted into approved/rejected/pending folders."
+            >
+              {downloadingZip ? '⏳ Zipping…' : `⬇ Download ${actionLabelSuffix}`}
+            </button>
+            <button
+              onClick={() => bulkDeleteSubmissions(actionTargets)}
+              disabled={bulkActioning || actionTargets.length === 0}
+              className="px-4 py-2 rounded-lg text-xs font-bold bg-red-600 text-white hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              title="Permanently delete these submissions and their photos. Resets the team's progress on affected tiles. Use to clear test data."
+            >
+              🗑 Delete {actionLabelSuffix}
+            </button>
+          </div>
+
+          {/* Filters */}
+          <div className="flex flex-wrap items-center gap-4 mb-5">
+            <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-lg p-1">
+              {(['pending', 'approved', 'rejected', 'all'] as const).map(s => {
+                const count = s === 'all'
+                  ? photoSubmissions.length
+                  : photoSubmissions.filter(x => x.status === s).length
+                return (
+                  <button
+                    key={s}
+                    onClick={() => setSubmissionStatusFilter(s)}
+                    className={`px-3 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-colors ${
+                      submissionStatusFilter === s
+                        ? 'bg-violet-600 text-white'
+                        : 'text-gray-400 hover:text-white'
+                    }`}
+                  >
+                    {s} <span className="opacity-60">({count})</span>
+                  </button>
+                )
+              })}
+            </div>
+            <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-lg p-1">
+              <button
+                onClick={() => setSubmissionBoardFilter('all')}
+                className={`px-3 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-colors ${
+                  submissionBoardFilter === 'all' ? 'bg-violet-600 text-white' : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                All boards
+              </button>
+              <button
+                onClick={() => setSubmissionBoardFilter('current')}
+                className={`px-3 py-1.5 rounded-md text-xs font-bold uppercase tracking-wider transition-colors ${
+                  submissionBoardFilter === 'current' ? 'bg-violet-600 text-white' : 'text-gray-400 hover:text-white'
+                }`}
+              >
+                Current board only
+              </button>
+            </div>
+          </div>
+
+          {/* List */}
+          {(() => {
+            if (filteredSubmissions.length === 0) {
+              return (
+                <div className="bg-white/5 border border-white/10 rounded-xl p-8 text-center">
+                  <p className="text-gray-400 text-sm">No {submissionStatusFilter === 'all' ? '' : submissionStatusFilter} submissions{submissionBoardFilter === 'current' ? ' for this board' : ''}.</p>
+                </div>
+              )
+            }
+            return (
+              <div className="flex flex-col gap-3">
+                {filteredSubmissions.map(sub => {
+                  const subTeam = teams.find(t => t.id === sub.team_id)
+                  const subTask = tasks.find(t => t.id === sub.task_id)
+                  const subSection = sections.find(s => s.id === subTeam?.section_id)
+                  const statusStyles = {
+                    pending: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
+                    approved: 'bg-green-500/20 text-green-300 border-green-500/30',
+                    rejected: 'bg-red-500/20 text-red-300 border-red-500/30',
+                  }[sub.status]
+                  const isSelected = selectedSubmissionIds.has(sub.id)
+                  return (
+                    <div
+                      key={sub.id}
+                      className={`flex items-start gap-4 bg-white/5 border rounded-xl p-4 hover:bg-white/[0.07] transition-colors ${
+                        isSelected ? 'border-violet-400/60 bg-violet-500/[0.08]' : 'border-white/10'
+                      }`}
+                    >
+                      <label className="pt-1 cursor-pointer select-none flex-shrink-0">
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => toggleSubmissionSelected(sub.id)}
+                          className="w-4 h-4 accent-violet-500"
+                        />
+                      </label>
+                      <SubmissionThumb url={sub.photo_url} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <p className="font-bold text-sm text-white truncate">{subTeam?.name ?? 'Unknown team'}</p>
+                          <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border ${statusStyles}`}>
+                            {sub.status}
+                          </span>
+                          {subSection && (
+                            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-white/10 text-gray-300">
+                              {subSection.name}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-xs text-gray-400 truncate mb-1">{subTask?.title ?? 'Unknown task'}</p>
+                        <p className="text-[10px] text-gray-500">{new Date(sub.created_at).toLocaleString()}</p>
+                        <div className="flex gap-2 mt-3">
+                          <button
+                            onClick={() => approvePhotoSubmission(sub)}
+                            disabled={sub.status === 'approved'}
+                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                              sub.status === 'approved'
+                                ? 'bg-green-500 text-white cursor-default opacity-60'
+                                : 'bg-green-500/20 text-green-300 border border-green-500/30 hover:bg-green-500/30'
+                            }`}
+                          >
+                            ✓ {sub.status === 'approved' ? 'Approved' : 'Approve'}
+                          </button>
+                          <button
+                            onClick={() => rejectPhotoSubmission(sub)}
+                            disabled={sub.status === 'rejected'}
+                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-colors ${
+                              sub.status === 'rejected'
+                                ? 'bg-red-500 text-white cursor-default opacity-60'
+                                : 'bg-red-500/20 text-red-300 border border-red-500/30 hover:bg-red-500/30'
+                            }`}
+                          >
+                            ✗ {sub.status === 'rejected' ? 'Rejected' : 'Reject'}
+                          </button>
+                          <button
+                            onClick={() => deletePhotoSubmission(sub)}
+                            className="ml-auto px-3 py-1.5 rounded-lg text-xs font-bold text-gray-500 hover:text-red-400 hover:bg-red-500/10 transition-colors"
+                            title="Delete this submission and its photo. Resets the team's progress on this tile."
+                          >
+                            🗑 Delete
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })()}
+        </section>
+        )
+        })()}
+
+      </main>
+
+      {/* ── Slot Picker Modal ───────────────────────────────────────────────── */}
+      {slotPickerIndex !== null && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4"
+          onClick={() => setSlotPickerIndex(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[80vh] flex flex-col animate-bounce-in"
+            onClick={e => e.stopPropagation()}>
+            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h3 className="font-bold text-gray-900">Place a challenge</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Slot {slotPickerIndex + 1} of 25</p>
+              </div>
+              <button onClick={() => setSlotPickerIndex(null)} className="text-gray-300 hover:text-gray-600 text-2xl font-light">&times;</button>
+            </div>
+            {/* Category filter */}
+            {allCategories.length > 0 && (
+              <div className="px-4 pt-3 flex gap-1.5 flex-wrap">
+                <button onClick={() => setSlotPickerFilter('all')}
+                  className={`px-2 py-0.5 rounded text-xs font-bold transition-colors ${slotPickerFilter === 'all' ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                  All
+                </button>
+                {allCategories.map(cat => (
+                  <button key={cat} onClick={() => setSlotPickerFilter(cat)}
+                    className={`px-2 py-0.5 rounded text-xs font-bold transition-colors ${slotPickerFilter === cat ? 'bg-violet-600 text-white' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}>
+                    {cat}
+                  </button>
+                ))}
+              </div>
+            )}
+            <div className="flex-1 overflow-y-auto divide-y divide-gray-100 py-2">
+              {(slotPickerFilter === 'all' ? scopedTasks : scopedTasks.filter(t => t.category === slotPickerFilter))
+                .filter(t => !placedTaskIds.has(t.id))
+                .map(task => (
+                <button
+                  key={task.id}
+                  onClick={async () => {
+                    await insertIntoGrid(task.id, slotPickerIndex)
+                    setSlotPickerIndex(null)
+                  }}
+                  className="w-full flex items-center gap-3 px-4 py-3 hover:bg-violet-50 transition-colors text-left"
+                >
+                  <div className="w-5 h-5 rounded-full flex-shrink-0" style={{ backgroundColor: task.hex_code }} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">{task.title}</p>
+                    {task.category && <p className="text-xs text-gray-400 truncate">{task.category}</p>}
+                  </div>
+                  {(task.points ?? 0) > 0 && (
+                    <span className="text-xs font-bold text-violet-500 flex-shrink-0">{task.points} pts</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Tile Edit Modal ──────────────────────────────────────────────────── */}
+      {editingTile && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4"
+          onClick={() => !tileSaving && setEditingTile(null)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-y-auto max-h-[90vh] animate-bounce-in"
+            onClick={e => e.stopPropagation()}>
+            <div className="h-16 flex items-center px-6 gap-3" style={{ backgroundColor: tileHex }}>
+              <div className="flex-1">
+                {tileCategory && <p className="text-white/60 text-[10px] font-black uppercase tracking-widest">{tileCategory}</p>}
+                <p className="text-white font-black text-lg leading-tight truncate">{tileTitle || 'Tile Title'}</p>
+              </div>
+              <button onClick={() => setEditingTile(null)} className="text-white/60 hover:text-white text-2xl font-light">&times;</button>
+            </div>
+            <div className="p-6 flex flex-col gap-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Title</label>
+                <input type="text" value={tileTitle} onChange={e => setTileTitle(e.target.value)} autoFocus
+                  className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-violet-500" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1">Section</label>
+                <select value={tileSectionId} onChange={e => setTileSectionId(e.target.value)}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white">
+                  {myBoards.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
+                {editingTile && tileSectionId !== editingTile.section_id && (
+                  <p className="text-xs text-amber-600 mt-1">Moving to a different section will take this card off the board.</p>
+                )}
+              </div>
+              <div className="flex gap-3">
+                <div className="flex-1">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Category</label>
+                  <select value={tileCategory} onChange={async e => {
+                    if (e.target.value === '__new__') {
+                      const name = await promptAndCreateCategory(tileSectionId)
+                      if (name) setTileCategory(name)
+                      return
+                    }
+                    setTileCategory(e.target.value)
+                  }}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-violet-500 bg-white">
+                    <option value="">— Uncategorized —</option>
+                    {categories.filter(c => c.section_id === tileSectionId).map(c => (
+                      <option key={c.id} value={c.name}>{c.name}</option>
+                    ))}
+                    <option value="__new__">+ New category…</option>
+                  </select>
+                </div>
+                <div className="w-24">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Points</label>
+                  <input type="number" value={tilePoints} min={0}
+                    onChange={e => setTilePoints(Math.max(0, parseInt(e.target.value) || 0))}
+                    className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-violet-500 text-center font-bold" />
+                </div>
+              </div>
+              <ColorPicker hex={tileHex} colorName={tileColor} onHexChange={setTileHex} onNameChange={setTileColor} />
+              {/* Type toggle */}
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Card Type</label>
+                <div className="flex rounded-lg overflow-hidden border border-gray-300">
+                  <button
+                    type="button"
+                    onClick={() => setTileTaskType('standard')}
+                    className={`flex-1 py-2 text-sm font-bold transition-colors ${tileTaskType === 'standard' ? 'bg-violet-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+                  >
+                    Standard
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTileTaskType('answer')}
+                    className={`flex-1 py-2 text-sm font-bold transition-colors ${tileTaskType === 'answer' ? 'bg-violet-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}
+                  >
+                    Answer Input
+                  </button>
+                </div>
+              </div>
+              {tileTaskType === 'answer' && (
+                <>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Question / Prompt</label>
+                    <input type="text" value={tileAnswerQuestion} onChange={e => setTileAnswerQuestion(e.target.value)}
+                      placeholder="e.g. What is the name of this landmark?"
+                      className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-violet-500" />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Answer Template</label>
+                    <p className="text-xs text-gray-400 mb-1">One answer per line. Each line becomes a row of letter boxes.</p>
+                    <textarea value={tileAnswerText} onChange={e => setTileAnswerText(e.target.value)}
+                      placeholder={"e.g.\nPETRONAS\nTWIN TOWERS"}
+                      rows={3}
+                      className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-violet-500 font-mono text-sm resize-none" />
+                  </div>
+                </>
+              )}
+              <div className="flex gap-3 pt-2">
+                <button onClick={saveTile} disabled={tileSaving || !tileTitle.trim() || !tileColor.trim()}
+                  className="flex-1 py-2.5 bg-violet-600 text-white rounded-xl font-bold hover:bg-violet-700 disabled:opacity-50 transition-colors">
+                  {tileSaving ? 'Saving...' : 'Save Changes'}
+                </button>
+                <button onClick={() => setEditingTile(null)} disabled={tileSaving}
+                  className="px-5 py-2.5 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-colors">
+                  Cancel
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── QR Modal ────────────────────────────────────────────────────────── */}
+      {qrTask && (
+        <div className="fixed inset-0 bg-black flex items-center justify-center z-50 cursor-pointer" onClick={() => setQrTask(null)}>
+          <button onClick={() => setQrTask(null)} className="absolute top-6 right-8 text-white/60 hover:text-white text-5xl font-light z-10">&times;</button>
+          <div className="absolute top-6 left-0 right-0 text-center text-white/40 text-lg">Tap anywhere to go back</div>
+          <div className="bg-white rounded-3xl p-10 flex flex-col items-center gap-6 max-w-lg mx-4 cursor-default animate-bounce-in" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl" style={{ backgroundColor: qrTask.hex_code }} />
+              <h2 className="text-3xl font-black text-gray-900">{qrTask.title}</h2>
+            </div>
+            <p className="text-gray-400 font-medium uppercase tracking-wider text-sm">{qrTask.color} Challenge — Scan with phone camera</p>
+            <div className="bg-white p-4 rounded-2xl">
+              <QRCodeSVG value={`${window.location.origin}/bingo-dash/task/${qrTask.id}`} size={400} level="H" />
+            </div>
+            <p className="text-xs text-gray-300 font-mono break-all text-center">
+              {window.location.origin}/bingo-dash/task/{qrTask.id}
+            </p>
+            <button onClick={() => setQrTask(null)} className="px-8 py-4 bg-gray-900 text-white rounded-2xl hover:bg-gray-700 transition-all text-lg font-bold hover:scale-105 active:scale-95">
+              &larr; Back to Challenges
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Import Modal ─────────────────────────────────────────────────────── */}
+      {showImport && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4" onClick={() => { if (!importing) setShowImport(false) }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col animate-bounce-in" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900">Import Challenges</h2>
+                <p className="text-sm text-gray-400 mt-0.5">Bulk-create tiles from JSON</p>
+              </div>
+              <button onClick={() => setShowImport(false)} className="text-gray-300 hover:text-gray-600 text-2xl font-light">&times;</button>
+            </div>
+            <div className="px-6 py-5 flex-1 overflow-y-auto flex flex-col gap-4">
+              <details className="bg-gray-50 rounded-xl overflow-hidden">
+                <summary className="px-4 py-3 text-sm font-medium text-gray-600 cursor-pointer hover:bg-gray-100">JSON format reference ▾</summary>
+                <pre className="px-4 pb-4 text-xs text-gray-500 leading-relaxed overflow-x-auto">{`[
+  {
+    "title": "Water Challenge",
+    "color": "Blue",
+    "hex_code": "#3B82F6",
+    "clues": ["Find a water source", "Take a team photo"]
+  }
+]`}</pre>
+              </details>
+              <textarea value={importText} onChange={e => { setImportText(e.target.value); setImportPreview(null); setImportError('') }}
+                placeholder="Paste your JSON array here..."
+                className="w-full h-40 px-4 py-3 rounded-xl border border-gray-200 font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-violet-400"
+                disabled={importing} />
+              {importError && (
+                <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
+                  <span>🚫</span><p className="text-red-600 font-bold text-sm">{importError}</p>
+                </div>
+              )}
+              {importPreview && (
+                <div>
+                  <p className="text-sm font-bold text-gray-700 mb-2">Preview — {importPreview.length} challenge{importPreview.length !== 1 ? 's' : ''} to import:</p>
+                  <div className="border border-gray-200 rounded-xl overflow-hidden divide-y divide-gray-100">
+                    {importPreview.map((row, i) => (
+                      <div key={i} className="flex items-center gap-3 px-4 py-3">
+                        <div className="w-5 h-5 rounded-full flex-shrink-0" style={{ backgroundColor: row.hex_code }} />
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-gray-900 text-sm truncate">{row.title}</p>
+                          <p className="text-xs text-gray-400">{row.color}{row.clues.length > 0 ? ` · ${row.clues.length} clue${row.clues.length !== 1 ? 's' : ''}` : ''}</p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+            <div className="px-6 py-4 border-t border-gray-100 flex gap-3 justify-end">
+              <button onClick={() => setShowImport(false)} disabled={importing}
+                className="px-5 py-2 rounded-lg bg-gray-100 text-gray-700 text-sm font-medium hover:bg-gray-200 transition-colors disabled:opacity-50">Cancel</button>
+              {!importPreview ? (
+                <button onClick={handleImportPreview} disabled={!importText.trim()}
+                  className="px-5 py-2 rounded-lg bg-violet-600 text-white text-sm font-bold hover:bg-violet-700 transition-colors disabled:opacity-50">Preview Import</button>
+              ) : (
+                <button onClick={handleImportConfirm} disabled={importing}
+                  className="px-5 py-2 rounded-lg bg-violet-600 text-white text-sm font-bold hover:bg-violet-700 transition-colors disabled:opacity-50">
+                  {importing ? 'Importing...' : `Import ${importPreview.length} Challenge${importPreview.length !== 1 ? 's' : ''}`}
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Section Manager Modal ───────────────────────────────────────────── */}
+      {showSectionManager && (
+        <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4"
+          onClick={() => setShowSectionManager(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-y-auto max-h-[90vh] animate-bounce-in"
+            onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Sections</h3>
+                <p className="text-xs text-gray-400 mt-0.5">Each section is an independent game at a different location.</p>
+              </div>
+              <button onClick={() => setShowSectionManager(false)} className="text-gray-400 hover:text-gray-700 text-2xl font-light">&times;</button>
+            </div>
+            <div className="p-6 flex flex-col gap-3">
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={newSectionName}
+                  onChange={e => setNewSectionName(e.target.value)}
+                  onKeyDown={e => { if (e.key === 'Enter') createSection() }}
+                  placeholder="New section name (e.g. Klang Hunt)"
+                  className="flex-1 px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-violet-500 text-sm"
+                />
+                <button onClick={() => createSection()} disabled={!newSectionName.trim()}
+                  className="px-4 py-2 bg-violet-600 text-white rounded-lg text-sm font-bold hover:bg-violet-700 disabled:opacity-40">
+                  Add
+                </button>
+              </div>
+              <div className="divide-y divide-gray-100 border border-gray-200 rounded-lg">
+                {myBoards.map(s => {
+                  const taskCount = tasks.filter(t => t.section_id === s.id).length
+                  const teamCount = teams.filter(t => t.section_id === s.id).length
+                  return (
+                    <div key={s.id} className={`p-3 ${s.game_started ? 'bg-green-50' : ''}`}>
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          defaultValue={s.name}
+                          key={`${s.id}-${s.name}`}
+                          onBlur={e => { if (e.target.value.trim() !== s.name) renameSection(s.id, e.target.value) }}
+                          onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
+                          className="flex-1 px-2 py-1 rounded border border-transparent hover:border-gray-200 focus:border-violet-400 focus:outline-none text-sm font-medium bg-transparent"
+                        />
+                        <span className="text-xs text-gray-400 flex-shrink-0">{taskCount} cards · {teamCount} teams</span>
+                        <button onClick={() => deleteSection(s.id)}
+                          className="text-xs text-red-400 hover:text-red-600 px-1.5 py-1 flex-shrink-0 disabled:opacity-30"
+                          disabled={myBoards.length <= 1}>
+                          Delete
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-2 mt-2">
+                        <button
+                          onClick={() => toggleSectionGameStarted(s.id, !s.game_started)}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all ${
+                            s.game_started
+                              ? 'bg-green-500 text-white hover:bg-red-500'
+                              : 'bg-gray-200 text-gray-600 hover:bg-green-500 hover:text-white'
+                          }`}
+                        >
+                          <span>{s.game_started ? '● LIVE' : '■ Locked'}</span>
+                        </button>
+                        <span className="text-[11px] text-gray-400">
+                          {s.game_started ? 'Players can access the board' : 'Players see waiting screen'}
+                        </span>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Team Grid Viewer Modal ──────────────────────────────────────────── */}
+      {viewingTeam && (() => {
+        const team = viewingTeam
+        const teamScans = scans.filter(s => s.team_id === team.id)
+        const completedIds = new Set(teamScans.filter(s => s.completed).map(s => s.task_id))
+        const scannedIds = new Set(teamScans.map(s => s.task_id))
+        const gridTasksForTeam = boardTasksForSection(team.section_id)
+        const slots = buildBingoSlots(gridTasksForTeam)
+        const completedLineIdx = completedBingoLines(slots, completedIds)
+        const bingoSlotSet = new Set<number>()
+        completedLineIdx.forEach(i => BINGO_LINES[i].forEach(idx => bingoSlotSet.add(idx)))
+        const gridTaskIdSet = new Set(gridTasksForTeam.map(t => t.id))
+        const tasksDone = teamScans.filter(s => s.completed && gridTaskIdSet.has(s.task_id)).length
+        const points = gridTasksForTeam.reduce(
+          (sum, t) => completedIds.has(t.id) ? sum + (t.points ?? 0) : sum, 0,
+        )
+        return (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4"
+            onClick={() => setViewingTeam(null)}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col animate-bounce-in"
+              onClick={e => e.stopPropagation()}>
+              <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+                <div>
+                  <p className="text-[10px] font-black text-violet-500 uppercase tracking-widest">Team Grid</p>
+                  <h3 className="font-black text-gray-900 text-lg">{team.name}</h3>
+                </div>
+                <button onClick={() => setViewingTeam(null)} className="text-gray-300 hover:text-gray-600 text-2xl font-light">&times;</button>
+              </div>
+
+              {/* Stats */}
+              <div className="px-5 py-3 border-b border-gray-100 grid grid-cols-3 gap-3">
+                <div className="text-center">
+                  <p className="text-xs text-gray-400 font-bold uppercase tracking-wider">Points</p>
+                  <p className="text-2xl font-black text-gray-900">{points}</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xs text-gray-400 font-bold uppercase tracking-wider">Bingos</p>
+                  <p className="text-2xl font-black text-amber-600">{completedLineIdx.length}<span className="text-sm text-gray-300">/12</span></p>
+                </div>
+                <div className="text-center">
+                  <p className="text-xs text-gray-400 font-bold uppercase tracking-wider">Done</p>
+                  <p className="text-2xl font-black text-green-600">{tasksDone}</p>
+                </div>
+              </div>
+
+              {/* Grid */}
+              <div className="p-5 overflow-y-auto">
+                {gridTasksForTeam.length === 0 ? (
+                  <p className="text-center text-gray-400 py-8 text-sm">No grid configured for this section.</p>
+                ) : (
+                  <div className="grid grid-cols-5 gap-1.5">
+                    {slots.map((t, i) => {
+                      if (!t) {
+                        return <div key={`e-${i}`} className="aspect-square rounded-lg bg-gray-50 border border-dashed border-gray-200" />
+                      }
+                      const isCompleted = completedIds.has(t.id)
+                      const isScanned = !isCompleted && scannedIds.has(t.id)
+                      const inLine = bingoSlotSet.has(i)
+                      return (
+                        <div
+                          key={t.id}
+                          title={t.title}
+                          className="relative aspect-square rounded-lg flex items-center justify-center text-center px-1 overflow-hidden"
+                          style={{
+                            backgroundColor: t.hex_code,
+                            opacity: isCompleted ? 1 : isScanned ? 0.55 : 0.22,
+                            boxShadow: inLine ? '0 0 0 2px #fbbf24, 0 0 8px #fbbf24aa' : 'none',
+                          }}
+                        >
+                          <span className="text-white text-[9px] font-black leading-tight line-clamp-3 drop-shadow">
+                            {t.title}
+                          </span>
+                          {isCompleted && (
+                            <div className="absolute top-0.5 right-0.5 bg-white/90 rounded-full w-4 h-4 flex items-center justify-center">
+                              <span className="text-green-600 text-[10px] font-black">✓</span>
+                            </div>
+                          )}
+                          {isScanned && (
+                            <div className="absolute top-0.5 right-0.5 w-2.5 h-2.5 rounded-full border-2 border-white/90" />
+                          )}
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
+                <div className="flex justify-center gap-4 text-[11px] text-gray-400 mt-4">
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-gray-300" />Locked</span>
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full border-2 border-gray-400" />Scanned</span>
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-green-500" />Completed</span>
+                  <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-sm bg-amber-400" />Bingo</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* ── Section-wide "Live Teams Link" Share Modal ────────────────────── */}
+      {showAllTeamsLink && (() => {
+        const currentSection = sections.find(s => s.id === currentSectionId)
+        const url = currentSection
+          ? `${window.location.origin}/bingo-dash/teams/${currentSection.slug}`
+          : ''
+        const sectionTeamCount = currentSectionId ? teams.filter(t => t.section_id === currentSectionId).length : 0
+        const sectionMemberCount = currentSectionId
+          ? members.filter(m => m.section_id === currentSectionId && m.role === 'member').length
+          : 0
+        const handleCopy = () => {
+          if (!url) return
+          navigator.clipboard.writeText(url).then(() => {
+            setAllTeamsLinkCopied(true)
+            setTimeout(() => setAllTeamsLinkCopied(false), 2000)
+          })
+        }
+        const downloadQR = () => {
+          const svg = document.getElementById('all-teams-qr-svg')
+          if (!svg || !currentSection) return
+          const svgData = new XMLSerializer().serializeToString(svg)
+          const canvas = document.createElement('canvas')
+          const ctx = canvas.getContext('2d')
+          const img = new Image()
+          img.onload = () => {
+            canvas.width = 1024
+            canvas.height = 1024
+            if (ctx) {
+              ctx.fillStyle = '#ffffff'
+              ctx.fillRect(0, 0, 1024, 1024)
+              ctx.drawImage(img, 0, 0, 1024, 1024)
+            }
+            const a = document.createElement('a')
+            a.download = `bingo-dash-teams-${currentSection.slug}.png`
+            a.href = canvas.toDataURL('image/png')
+            a.click()
+          }
+          img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)))
+        }
+        return (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4"
+            onClick={() => setShowAllTeamsLink(false)}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md animate-bounce-in"
+              onClick={e => e.stopPropagation()}>
+              <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Live Teams Link</h3>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    For <span className="font-bold text-gray-700">{currentSection?.name ?? 'this board'}</span>
+                    <span className="text-gray-300"> · </span>
+                    <span className="font-bold text-emerald-600">{sectionTeamCount}</span> group{sectionTeamCount !== 1 ? 's' : ''}
+                    <span className="text-gray-300">, </span>
+                    <span className="font-bold text-emerald-600">{sectionMemberCount}</span> member{sectionMemberCount !== 1 ? 's' : ''}
+                  </p>
+                </div>
+                <button onClick={() => setShowAllTeamsLink(false)}
+                  className="text-gray-400 hover:text-gray-700 text-2xl font-light">&times;</button>
+              </div>
+
+              {!currentSection ? (
+                <div className="p-8 text-center text-gray-400">
+                  <p className="text-sm">No board selected.</p>
+                </div>
+              ) : (
+                <div className="p-6 flex flex-col items-center gap-5">
+                  <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2.5 w-full">
+                    <span>📡</span>
+                    <p className="text-emerald-700 text-xs font-bold">
+                      Anyone with this link can see <span className="font-black">every group</span> and who's inside, in real time. View only — they can't join the game.
+                    </p>
+                  </div>
+
+                  <div className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm">
+                    <QRCodeSVG id="all-teams-qr-svg" value={url} size={260} level="H" />
+                  </div>
+
+                  <div className="w-full flex items-center gap-2">
+                    <div className="flex-1 px-3 py-2.5 bg-gray-50 rounded-lg text-xs font-mono text-gray-600 break-all select-all border border-gray-200">
+                      {url}
+                    </div>
+                    <button onClick={handleCopy}
+                      className={`px-3 py-2.5 rounded-lg text-xs font-bold transition-all flex-shrink-0 ${
+                        allTeamsLinkCopied ? 'bg-green-100 text-green-700 border border-green-300' : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                      }`}>
+                      {allTeamsLinkCopied ? 'Copied!' : 'Copy'}
+                    </button>
+                  </div>
+
+                  <button onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
+                    className="w-full py-3 rounded-xl bg-gray-900 text-white font-bold text-sm hover:bg-gray-700 transition-colors hover:scale-[1.02] active:scale-95">
+                    Open Live View ↗
+                  </button>
+
+                  <button onClick={downloadQR}
+                    className="w-full py-3 rounded-xl bg-emerald-600 text-white font-bold text-sm hover:bg-emerald-700 transition-colors hover:scale-[1.02] active:scale-95">
+                    Download QR as PNG
+                  </button>
+
+                  <p className="text-[11px] text-gray-300 text-center">
+                    Switch boards in the BOARDS panel to share a different live link.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* ── Per-team Bonus Points breakdown Modal ─────────────────────────── */}
+      {bonusTeam && (() => {
+        const total = bonusDraft.reduce((sum, i) => sum + (Number.isFinite(i.points) ? i.points : 0), 0)
+        const setRow = (idx: number, patch: Partial<BonusItem>) =>
+          setBonusDraft(prev => prev.map((it, i) => i === idx ? { ...it, ...patch } : it))
+        const addRow = () => setBonusDraft(prev => [...prev, { label: '', points: 0 }])
+        const removeRow = (idx: number) => setBonusDraft(prev => prev.filter((_, i) => i !== idx))
+        return (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4"
+            onClick={() => { if (!bonusSaving) setBonusTeam(null) }}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg animate-bounce-in flex flex-col max-h-[90vh]"
+              onClick={e => e.stopPropagation()}>
+              <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Bonus Points</h3>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    For <span className="font-bold text-gray-700">{bonusTeam.name}</span> · one line per activity
+                  </p>
+                </div>
+                <button onClick={() => { if (!bonusSaving) setBonusTeam(null) }}
+                  className="text-gray-400 hover:text-gray-700 text-2xl font-light">&times;</button>
+              </div>
+
+              <div className="px-6 py-4 overflow-y-auto">
+                {bonusDraft.length === 0 && (
+                  <p className="text-sm text-gray-400 text-center py-6">
+                    No activities yet. Add one below to start giving points.
+                  </p>
+                )}
+                <div className="flex flex-col gap-2">
+                  {bonusDraft.map((item, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={item.label}
+                        autoFocus={idx === bonusDraft.length - 1 && item.label === ''}
+                        placeholder="Activity name (e.g. Tug of War)"
+                        onChange={e => setRow(idx, { label: e.target.value })}
+                        className="flex-1 px-3 py-2 rounded-lg border border-gray-200 focus:border-violet-500 focus:outline-none text-sm text-gray-900 bg-white"
+                      />
+                      <input
+                        type="number"
+                        step="1"
+                        value={Number.isFinite(item.points) ? item.points : 0}
+                        onChange={e => {
+                          const n = parseInt(e.target.value, 10)
+                          setRow(idx, { points: Number.isFinite(n) ? n : 0 })
+                        }}
+                        onFocus={e => e.target.select()}
+                        className="w-20 px-2 py-2 rounded-lg border border-gray-200 focus:border-violet-500 focus:outline-none text-sm text-center font-mono text-gray-900 bg-white"
+                      />
+                      <button onClick={() => removeRow(idx)}
+                        title="Remove this activity"
+                        className="w-8 h-8 flex-shrink-0 rounded-lg text-gray-400 hover:text-red-500 hover:bg-red-50 transition-colors text-lg">
+                        &times;
+                      </button>
+                    </div>
+                  ))}
+                </div>
+                <button onClick={addRow}
+                  className="mt-3 w-full py-2.5 rounded-lg border border-dashed border-gray-300 text-gray-500 text-sm font-bold hover:border-violet-400 hover:text-violet-600 transition-colors">
+                  + Add activity
+                </button>
+              </div>
+
+              <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between flex-shrink-0">
+                <div className="text-sm text-gray-500">
+                  Total bonus <span className="ml-1 font-mono font-black text-lg text-amber-600">{total > 0 ? `+${total}` : total}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => { if (!bonusSaving) setBonusTeam(null) }}
+                    className="px-4 py-2 rounded-lg text-sm font-bold text-gray-500 hover:bg-gray-100 transition-colors">
+                    Cancel
+                  </button>
+                  <button onClick={saveBonus} disabled={bonusSaving}
+                    className="px-5 py-2 rounded-lg text-sm font-bold text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-50 transition-colors">
+                    {bonusSaving ? 'Saving…' : 'Save'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* ── Per-team "Live members link" Share Modal ──────────────────────── */}
+      {membersLinkTeam && (() => {
+        const team = membersLinkTeam
+        const url = `${window.location.origin}/bingo-dash/team/${team.id}/members`
+        const teamMembers = members.filter(m => m.team_id === team.id && m.role === 'member')
+        const handleCopy = () => {
+          navigator.clipboard.writeText(url).then(() => {
+            setMembersLinkCopied(true)
+            setTimeout(() => setMembersLinkCopied(false), 2000)
+          })
+        }
+        const downloadQR = () => {
+          const svg = document.getElementById('team-members-qr-svg')
+          if (!svg) return
+          const svgData = new XMLSerializer().serializeToString(svg)
+          const canvas = document.createElement('canvas')
+          const ctx = canvas.getContext('2d')
+          const img = new Image()
+          img.onload = () => {
+            canvas.width = 1024
+            canvas.height = 1024
+            if (ctx) {
+              ctx.fillStyle = '#ffffff'
+              ctx.fillRect(0, 0, 1024, 1024)
+              ctx.drawImage(img, 0, 0, 1024, 1024)
+            }
+            const a = document.createElement('a')
+            a.download = `bingo-dash-members-${team.name.replace(/\s+/g, '-').toLowerCase()}.png`
+            a.href = canvas.toDataURL('image/png')
+            a.click()
+          }
+          img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)))
+        }
+        return (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4"
+            onClick={() => setMembersLinkTeam(null)}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md animate-bounce-in"
+              onClick={e => e.stopPropagation()}>
+              <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Live Members Link</h3>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    For <span className="font-bold text-gray-700">{team.name}</span>
+                    <span className="text-gray-300"> · </span>
+                    <span className="font-bold text-emerald-600">{teamMembers.length}</span> member{teamMembers.length !== 1 ? 's' : ''} now
+                  </p>
+                </div>
+                <button onClick={() => setMembersLinkTeam(null)}
+                  className="text-gray-400 hover:text-gray-700 text-2xl font-light">&times;</button>
+              </div>
+
+              <div className="p-6 flex flex-col items-center gap-5">
+                <div className="flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-4 py-2.5 w-full">
+                  <span>📡</span>
+                  <p className="text-emerald-700 text-xs font-bold">
+                    Anyone with this link can see who's in <span className="font-black">{team.name}</span> in real time. View only — they can't join the game.
+                  </p>
+                </div>
+
+                <div className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm">
+                  <QRCodeSVG id="team-members-qr-svg" value={url} size={260} level="H" />
+                </div>
+
+                <div className="w-full flex items-center gap-2">
+                  <div className="flex-1 px-3 py-2.5 bg-gray-50 rounded-lg text-xs font-mono text-gray-600 break-all select-all border border-gray-200">
+                    {url}
+                  </div>
+                  <button onClick={handleCopy}
+                    className={`px-3 py-2.5 rounded-lg text-xs font-bold transition-all flex-shrink-0 ${
+                      membersLinkCopied ? 'bg-green-100 text-green-700 border border-green-300' : 'bg-emerald-600 text-white hover:bg-emerald-700'
+                    }`}>
+                    {membersLinkCopied ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+
+                <button onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
+                  className="w-full py-3 rounded-xl bg-gray-900 text-white font-bold text-sm hover:bg-gray-700 transition-colors hover:scale-[1.02] active:scale-95">
+                  Open Live View ↗
+                </button>
+
+                <button onClick={downloadQR}
+                  className="w-full py-3 rounded-xl bg-emerald-600 text-white font-bold text-sm hover:bg-emerald-700 transition-colors hover:scale-[1.02] active:scale-95">
+                  Download QR as PNG
+                </button>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
+
+      {/* ── Join Link / QR Modal ───────────────────────────────────────────── */}
+      {showJoinLink && (() => {
+        const currentSection = sections.find(s => s.id === currentSectionId)
+        const baseUrl = currentSection
+          ? `${window.location.origin}/bingo-dash/play/${currentSection.slug}`
+          : ''
+        const playerUrl = baseUrl
+        const observerUrl = baseUrl ? `${baseUrl}?mode=observer` : ''
+
+        const handleCopy = (url: string) => {
+          navigator.clipboard.writeText(url).then(() => {
+            setJoinLinkCopied(true)
+            setTimeout(() => setJoinLinkCopied(false), 2000)
+          })
+        }
+
+        const downloadQR = (svgId: string, filename: string) => {
+          const svg = document.getElementById(svgId)
+          if (!svg) return
+          const svgData = new XMLSerializer().serializeToString(svg)
+          const canvas = document.createElement('canvas')
+          const ctx = canvas.getContext('2d')
+          const img = new Image()
+          img.onload = () => {
+            canvas.width = 1024
+            canvas.height = 1024
+            if (ctx) {
+              ctx.fillStyle = '#ffffff'
+              ctx.fillRect(0, 0, 1024, 1024)
+              ctx.drawImage(img, 0, 0, 1024, 1024)
+            }
+            const a = document.createElement('a')
+            a.download = filename
+            a.href = canvas.toDataURL('image/png')
+            a.click()
+          }
+          img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)))
+        }
+
+        return (
+          <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4"
+            onClick={() => setShowJoinLink(false)}>
+            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md animate-bounce-in"
+              onClick={e => e.stopPropagation()}>
+              <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Join Links</h3>
+                  <p className="text-xs text-gray-400 mt-0.5">
+                    For <span className="font-bold text-gray-600">{currentSection?.name ?? 'this section'}</span>
+                  </p>
+                </div>
+                <button onClick={() => setShowJoinLink(false)}
+                  className="text-gray-400 hover:text-gray-700 text-2xl font-light">&times;</button>
+              </div>
+
+              {!currentSection ? (
+                <div className="p-8 text-center text-gray-400">
+                  <p className="text-sm">No section selected.</p>
+                </div>
+              ) : (
+                <div className="p-6 flex flex-col gap-5">
+                  {/* Tabs */}
+                  <div className="flex rounded-xl overflow-hidden border border-gray-200">
+                    <button
+                      onClick={() => setJoinLinkTab('player')}
+                      className={`flex-1 py-2.5 text-sm font-bold transition-colors ${
+                        joinLinkTab === 'player' ? 'bg-gray-900 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'
+                      }`}
+                    >
+                      🎯 Players
+                    </button>
+                    <button
+                      onClick={() => setJoinLinkTab('observer')}
+                      className={`flex-1 py-2.5 text-sm font-bold transition-colors ${
+                        joinLinkTab === 'observer' ? 'bg-blue-600 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'
+                      }`}
+                    >
+                      👁 Observers
+                    </button>
+                  </div>
+
+                  {/* Player tab */}
+                  {joinLinkTab === 'player' && (
+                    <div className="flex flex-col items-center gap-5">
+                      <div className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm">
+                        <QRCodeSVG id="join-qr-svg" value={playerUrl} size={260} level="H" />
+                      </div>
+                      <div className="w-full flex items-center gap-2">
+                        <div className="flex-1 px-3 py-2.5 bg-gray-50 rounded-lg text-xs font-mono text-gray-600 break-all select-all border border-gray-200">
+                          {playerUrl}
+                        </div>
+                        <button onClick={() => handleCopy(playerUrl)}
+                          className={`px-3 py-2.5 rounded-lg text-xs font-bold transition-all flex-shrink-0 ${
+                            joinLinkCopied ? 'bg-green-100 text-green-700 border border-green-300' : 'bg-gray-900 text-white hover:bg-gray-700'
+                          }`}>
+                          {joinLinkCopied ? 'Copied!' : 'Copy'}
+                        </button>
+                      </div>
+                      <button onClick={() => downloadQR('join-qr-svg', `bingo-dash-join-${currentSection.slug}.png`)}
+                        className="w-full py-3 rounded-xl bg-emerald-600 text-white font-bold text-sm hover:bg-emerald-700 transition-colors hover:scale-[1.02] active:scale-95">
+                        Download QR as PNG
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Observer tab */}
+                  {joinLinkTab === 'observer' && (
+                    <div className="flex flex-col items-center gap-5">
+                      <div className="flex items-center gap-2 bg-blue-50 border border-blue-200 rounded-xl px-4 py-2.5 w-full">
+                        <span>👁</span>
+                        <p className="text-blue-700 text-xs font-bold">Observers can browse and click everything — but cannot submit answers or complete tasks.</p>
+                      </div>
+                      <div className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm">
+                        <QRCodeSVG id="join-qr-svg-observer" value={observerUrl} size={260} level="H" />
+                      </div>
+                      <div className="w-full flex items-center gap-2">
+                        <div className="flex-1 px-3 py-2.5 bg-blue-50 rounded-lg text-xs font-mono text-blue-700 break-all select-all border border-blue-200">
+                          {observerUrl}
+                        </div>
+                        <button onClick={() => handleCopy(observerUrl)}
+                          className={`px-3 py-2.5 rounded-lg text-xs font-bold transition-all flex-shrink-0 ${
+                            joinLinkCopied ? 'bg-green-100 text-green-700 border border-green-300' : 'bg-blue-600 text-white hover:bg-blue-700'
+                          }`}>
+                          {joinLinkCopied ? 'Copied!' : 'Copy'}
+                        </button>
+                      </div>
+                      <button onClick={() => downloadQR('join-qr-svg-observer', `bingo-dash-observer-${currentSection.slug}.png`)}
+                        className="w-full py-3 rounded-xl bg-blue-600 text-white font-bold text-sm hover:bg-blue-700 transition-colors hover:scale-[1.02] active:scale-95">
+                        Download Observer QR as PNG
+                      </button>
+                    </div>
+                  )}
+
+                  <p className="text-[11px] text-gray-300 text-center">
+                    Switch sections in the header to get a different join link.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        )
+      })()}
+    </div>
+  )
+}

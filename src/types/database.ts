@@ -1,0 +1,394 @@
+export interface Task {
+  id: string
+  color: string
+  hex_code: string
+  title: string
+  sort_order: number
+  points: number
+  is_live: boolean
+  owner_id: string | null
+  created_at: string
+}
+
+export interface TaskPage {
+  id: string
+  task_id: string
+  page_order: number
+  media_url: string | null
+  media_type: 'image' | 'video' | null
+  pointer_1: string | null
+  pointer_2: string | null
+  pointer_3: string | null
+  pointer_4: string | null
+  pointer_5: string | null
+  pointer_6: string | null
+  example_1: string | null
+  example_2: string | null
+  example_3: string | null
+  example_4: string | null
+  example_5: string | null
+  example_6: string | null
+  icon_1: string | null
+  icon_2: string | null
+  icon_3: string | null
+  icon_4: string | null
+  icon_5: string | null
+  icon_6: string | null
+  created_at: string
+}
+
+export interface TaskPhoto {
+  id: string
+  task_id: string
+  photo_url: string
+  photo_order: number
+  position_x: number
+  position_y: number
+  caption: string | null
+  created_at: string
+}
+
+export interface TaskLink {
+  id: string
+  task_id: string
+  label: string
+  url: string
+  sort_order: number
+  created_at: string
+}
+
+export interface Team {
+  id: string
+  name: string
+  password: string
+  owner_id: string | null
+  created_at: string
+}
+
+export interface TeamScan {
+  id: string
+  team_id: string
+  task_id: string
+  scanned_at: string
+  completed: boolean
+  completed_at: string | null
+}
+
+// ── Bingo Dash ────────────────────────────────────────────────
+
+// Per-board timer + time's-up alarm fields (subset of BingoSection).
+export interface BoardTimer {
+  timer_seconds: number
+  timer_end_at: string | null
+  time_up_message: string
+  time_up_label: string
+  time_up_maps_url: string
+}
+
+export interface BingoSection extends BoardTimer {
+  id: string
+  name: string
+  slug: string
+  sort_order: number
+  game_started: boolean
+  board_note: string
+  board_note_every: number
+  marshal_password: string
+  photo_submissions_enabled: boolean
+  // How the 5×5 tiles render for players: 'icon' (category icon) or 'words'
+  // (category + shortened title). See components/BingoTileFace.tsx.
+  tile_display: 'icon' | 'words'
+  owner_id: string | null
+  created_at: string
+}
+
+export interface BingoChallengeSection {
+  id: string
+  game_section_id: string
+  name: string
+  sort_order: number
+  created_at: string
+}
+
+export interface BingoCategory {
+  id: string
+  section_id: string
+  challenge_section_id: string | null
+  name: string
+  sort_order: number
+  created_at: string
+}
+
+export interface BingoTask {
+  id: string
+  section_id: string
+  title: string
+  color: string
+  hex_code: string
+  sort_order: number
+  in_grid: boolean
+  category: string
+  points: number
+  task_type: 'standard' | 'answer' | 'photo'
+  answer_question: string | null
+  answer_text: string | null
+  completion_warning: string | null
+  require_marshal: boolean
+  // Contest ("contending") mode: played as a duel between two teams rather than
+  // solo. contest_game keys come from lib/contestGames.ts; contest_bonus is the
+  // extra the winner banks on top of the challenger's normal tile points.
+  is_contest: boolean
+  contest_game: string
+  contest_bonus: number
+  maps_url: string | null
+  maps_label: string | null
+  owner_id: string | null
+  cloned_from: string | null
+  created_at: string
+}
+
+// A card placed on a board's 5x5 grid. Cards are universal: the same task
+// can be placed on any number of boards via one placement row per board.
+export interface BingoBoardCard {
+  id: string
+  section_id: string
+  task_id: string
+  slot: number
+  created_at: string
+}
+
+export interface BingoSettings {
+  id: string
+  timer_seconds: number
+  timer_end_at: string | null
+  active_section_id: string | null
+  template_section_id: string | null
+  marshal_password: string
+  game_started: boolean
+  photo_submissions_enabled: boolean
+  time_up_message: string
+  time_up_label: string
+  time_up_maps_url: string
+  created_at: string
+}
+
+// Same shape as TaskPage — uses bingo_task_pages table
+export type BingoTaskPage = TaskPage
+
+export interface BingoTeam {
+  id: string
+  section_id: string
+  name: string
+  password: string
+  photo_url: string | null
+  bonus_points: number
+  // Itemised breakdown of the bonus total: one entry per activity the marshal
+  // awarded points for. bonus_points stays the authoritative sum of these.
+  bonus_breakdown: BonusItem[]
+  created_at: string
+}
+
+// One line in a team's bonus popup — an activity name and the points for it.
+export interface BonusItem {
+  label: string
+  points: number
+}
+
+export interface BingoAwardConfig {
+  id: string
+  section_id: string
+  total_points: number
+  image_url: string | null
+  consolation_count: number
+  consolation_group_count: number
+  third_count: number
+  second_count: number
+  first_count: number
+  slide_order: string[]
+  slide_points: Record<string, number>
+  holding_title: string | null
+  main_title: string | null
+  main_subtitle: string | null
+  main_tagline: string | null
+  created_at: string
+}
+
+export interface BingoScan {
+  id: string
+  team_id: string
+  task_id: string
+  scanned_at: string
+  completed: boolean
+  completed_at: string | null
+  // AI Team Building cards only: the result slots this team drew or typed
+  // (roulette genre/topic, dealt cards, animals, the 7 pitch words). Empty for
+  // every other card type. See lib/aitbCards.ts.
+  words: string[]
+}
+
+// A head-to-head duel on a contest card. The challenger scans the defender's QR
+// to create it; both phones then follow this row live.
+export interface BingoDuel {
+  id: string
+  section_id: string
+  task_id: string
+  challenger_team_id: string
+  defender_team_id: string
+  game_key: string
+  status: 'pending' | 'active' | 'done' | 'declined' | 'cancelled'
+  // Drawn once by the challenger so both phones show the identical setup.
+  payload: { imageUrl?: string; imageLabel?: string }
+  winner_team_id: string | null
+  // Bonus awarded to the winner only. The challenger's tile points are separate
+  // and come from the normal cross-off.
+  bonus_points: number
+  code: string
+  created_at: string
+  started_at: string | null
+  resolved_at: string | null
+}
+
+export interface BingoMember {
+  id: string
+  team_id: string
+  section_id: string
+  name: string
+  password: string
+  role: 'member' | 'observer'
+  created_at: string
+}
+
+export interface BingoPhotoSubmission {
+  id: string
+  team_id: string
+  task_id: string
+  scan_id: string | null
+  photo_url: string
+  status: 'pending' | 'approved' | 'rejected'
+  created_at: string
+}
+
+// Authenticated admin account (Supabase Auth user + approval profile).
+// owner = main holder with full access; sub = approved collaborator.
+export interface BingoAccount {
+  id: string
+  email: string | null
+  role: 'owner' | 'sub'
+  status: 'pending' | 'approved' | 'rejected'
+  can_bingo: boolean
+  can_flag: boolean
+  active_section_id: string | null
+  /** Set = temporary facilitator working ON this host account's tenant. */
+  facilitator_host: string | null
+  /** NULL = access never expires. */
+  access_expires_at: string | null
+  /** Name the helper typed on the join page — anonymous logins have no email. */
+  display_name: string | null
+  /** Which event pass this facilitator joined through (NULL = not from a pass). */
+  facilitator_session_id: string | null
+  created_at: string
+}
+
+/** A shareable event pass: one link + PIN that turns helpers into facilitators. */
+export interface BingoFacilitatorSession {
+  id: string
+  code: string
+  pin: string
+  host_id: string
+  label: string
+  expires_at: string
+  /** NULL = unlimited seats. */
+  max_uses: number | null
+  uses: number
+  revoked: boolean
+  created_by: string | null
+  created_at: string
+}
+
+// ── Snake and Ladder ──────────────────────────────────────────
+
+export interface SnakeGame {
+  id: string
+  name: string
+  snakes: Record<string, number>   // head -> tail
+  ladders: Record<string, number>  // bottom -> top
+  created_at: string
+}
+
+export interface SnakeTile {
+  id: string
+  game_id: string
+  tile_number: number
+  task_id: string | null
+  created_at: string
+}
+
+export interface SnakeTeam {
+  id: string
+  game_id: string
+  name: string
+  hex_code: string
+  emoji: string | null
+  position: number
+  sort_order: number
+  points: number
+  created_at: string
+}
+
+// ── Photo Voting ──────────────────────────────────────────────
+
+export interface VotePoll {
+  id: string
+  title: string
+  max_votes_per_voter: number
+  is_open: boolean
+  media_type: 'photo' | 'video'
+  created_at: string
+}
+
+export interface VotePhoto {
+  id: string
+  poll_id: string
+  photo_url: string
+  label: string | null
+  sort_order: number
+  created_at: string
+}
+
+export interface VoteBallot {
+  id: string
+  poll_id: string
+  photo_id: string
+  voter_id: string
+  created_at: string
+}
+
+/* ---------- AI Team Building ---------- */
+
+export interface AitbSettings {
+  id: number
+  admin_password: string
+  game_ends_at: string | null
+  updated_at: string
+}
+
+export interface AitbTeam {
+  id: string
+  name: string
+  color: string
+  sort_order: number
+  adjust: number
+  created_at: string
+}
+
+export interface AitbProgress {
+  id: string
+  team_id: string
+  activity_id: number
+  scanned_at: string | null
+  steps_done: number[]
+  completed_at: string | null
+  bonus: number
+  words: string[]
+  created_at: string
+}
