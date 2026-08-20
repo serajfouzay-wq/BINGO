@@ -555,7 +555,6 @@ export function BingoDashParticipant() {
                 task={task}
                 team={team}
                 sectionId={sectionId}
-                marshalPassword={marshalPassword}
               />
               <button
                 onClick={() => navigate(backPath)}

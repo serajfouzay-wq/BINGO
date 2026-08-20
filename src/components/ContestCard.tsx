@@ -25,10 +25,9 @@ type Props = {
   task: BingoTask
   team: DuelTeam
   sectionId: string
-  marshalPassword: string
 }
 
-export function ContestCard({ task, team, sectionId, marshalPassword }: Props) {
+export function ContestCard({ task, team, sectionId }: Props) {
   const duels = useBingoDuels(team.id, sectionId)
   const [mode, setMode] = useState<'idle' | 'scan' | 'pick'>('idle')
   const [teams, setTeams] = useState<BingoTeam[]>([])

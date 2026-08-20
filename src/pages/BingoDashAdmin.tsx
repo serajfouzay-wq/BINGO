@@ -626,9 +626,6 @@ export function BingoDashAdmin() {
   const gridTasks = currentSectionId ? boardTasksForSection(currentSectionId) : []
   // Contest bonuses won in duels, folded into each team's earned points.
   const duelBonuses = duelBonusByTeam(duels)
-  const placedTaskIds = new Set(
-    currentSectionId ? boardCards.filter(bc => bc.section_id === currentSectionId).map(bc => bc.task_id) : [],
-  )
   // How many boards each card sits on (for the "On N boards" labels).
   const boardCountByTask = (() => {
     const m = new Map<string, number>()
@@ -667,13 +664,14 @@ export function BingoDashAdmin() {
 
   // Library view: candidates for "Add to Grid" across sections.
   // Cards are universal — adding places the existing card on this board, no
-  // copying. A card is a candidate when it is NOT already on this board.
+  // copying. A card may be placed in as many slots as needed, so already-placed
+  // cards stay in the list (placedTaskIds is only used for the "on board" badge).
   // In the "All sections" view, legacy duplicates from the old copy-per-board
   // flow (same title) are collapsed to one entry: prefer this section's copy,
   // otherwise the oldest (the original).
   const addListTasks = (() => {
     const search = addListSearch.trim().toLowerCase()
-    let list = tasks.filter(t => !placedTaskIds.has(t.id))
+    let list = tasks.slice()
     if (addListSectionFilter === 'current') list = list.filter(t => t.section_id === currentSectionId)
     else if (addListSectionFilter !== 'all') list = list.filter(t => t.section_id === addListSectionFilter)
     else {
@@ -700,7 +698,7 @@ export function BingoDashAdmin() {
   })()
 
   const addListCategories = (() => {
-    let base = tasks.filter(t => !placedTaskIds.has(t.id))
+    let base = tasks.slice()
     if (addListSectionFilter === 'current') base = base.filter(t => t.section_id === currentSectionId)
     else if (addListSectionFilter !== 'all') base = base.filter(t => t.section_id === addListSectionFilter)
     return [...new Set(base.map(t => t.category).filter(Boolean))].sort() as string[]
@@ -1351,7 +1349,7 @@ export function BingoDashAdmin() {
   const insertIntoGrid = async (taskId: string, atIndex: number) => {
     if (!currentSectionId) return
     const resolvedId = await resolveOwnTaskForPlacement(taskId)
-    if (!resolvedId || placedTaskIds.has(resolvedId)) return
+    if (!resolvedId) return
     let target = atIndex
     if (target < 0 || target >= 25 || gridSlots[target] !== null) {
       target = gridSlots.findIndex(s => s === null)
@@ -3970,7 +3968,6 @@ export function BingoDashAdmin() {
             )}
             <div className="flex-1 overflow-y-auto divide-y divide-gray-100 py-2">
               {(slotPickerFilter === 'all' ? scopedTasks : scopedTasks.filter(t => t.category === slotPickerFilter))
-                .filter(t => !placedTaskIds.has(t.id))
                 .map(task => (
                 <button
                   key={task.id}

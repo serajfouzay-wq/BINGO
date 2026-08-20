@@ -198,7 +198,7 @@ CREATE TABLE IF NOT EXISTS bingo_photo_submissions (
   created_at  timestamptz NOT NULL DEFAULT now()
 );
 create table if not exists public.bingo_accounts (
-  id          uuid primary key.users(id) on delete cascade,
+  id          uuid primary key,
   email       text,
   role        text not null default 'sub'     check (role   in ('owner', 'sub')),
   status      text not null default 'pending'  check (status in ('pending', 'approved', 'rejected')),
@@ -252,12 +252,92 @@ create table if not exists public.bingo_challenge_sections (
 );
 
 create table if not exists public.settings (
-  id text primary key,
-  value jsonb,
-  owner_id uuid,
+  id         text primary key default gen_random_uuid()::text,
+  key        text unique,
+  value      text,
+  owner_id   uuid,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- owner_id columns the multitenant RLS expects (flag base tables)
+alter table public.tasks       add column if not exists owner_id uuid;
+alter table public.task_pages  add column if not exists owner_id uuid;
+alter table public.task_photos add column if not exists owner_id uuid;
+alter table public.task_links  add column if not exists owner_id uuid;
+alter table public.teams       add column if not exists owner_id uuid;
+alter table public.team_members add column if not exists owner_id uuid;
+alter table public.team_scans  add column if not exists owner_id uuid;
+alter table public.settings    add column if not exists owner_id uuid;
+
+
+-- ================= PHASE 1.5: ALL COLUMNS =================
+alter table public.bingo_tasks ADD COLUMN IF NOT EXISTS in_grid boolean NOT NULL DEFAULT false;
+alter table public.bingo_teams ADD COLUMN IF NOT EXISTS password text NOT NULL DEFAULT '';
+alter table public.bingo_award_configs ADD COLUMN IF NOT EXISTS slide_points JSONB NOT NULL DEFAULT '{}'::jsonb;
+alter table public.bingo_settings ADD COLUMN IF NOT EXISTS game_started BOOLEAN NOT NULL DEFAULT false;
+alter table public.bingo_sections add column if not exists timer_seconds int not null default 0;
+alter table public.bingo_sections add column if not exists timer_end_at timestamptz;
+alter table public.bingo_sections add column if not exists time_up_message text not null default '';
+alter table public.bingo_sections add column if not exists time_up_label text not null default '';
+alter table public.bingo_sections add column if not exists time_up_maps_url text not null default '';
+alter table public.bingo_sections add column if not exists marshal_password text not null default '1234';
+alter table public.bingo_sections add column if not exists photo_submissions_enabled boolean not null default true;
+alter table public.bingo_tasks ADD COLUMN IF NOT EXISTS points INTEGER NOT NULL DEFAULT 0;
+alter table public.bingo_tasks add column if not exists section_id uuid;
+alter table public.bingo_teams add column if not exists section_id uuid;
+alter table public.bingo_settings add column if not exists active_section_id uuid;
+alter table public.bingo_teams ADD COLUMN IF NOT EXISTS bonus_points INTEGER NOT NULL DEFAULT 0;
+alter table public.bingo_teams ADD COLUMN IF NOT EXISTS photo_url TEXT;
+alter table public.bingo_tasks ADD COLUMN IF NOT EXISTS category TEXT NOT NULL DEFAULT '';
+alter table public.task_pages ADD COLUMN IF NOT EXISTS icon_1 text;
+alter table public.task_pages ADD COLUMN IF NOT EXISTS icon_2 text;
+alter table public.task_pages ADD COLUMN IF NOT EXISTS icon_3 text;
+alter table public.task_pages ADD COLUMN IF NOT EXISTS icon_4 text;
+alter table public.task_pages ADD COLUMN IF NOT EXISTS icon_5 text;
+alter table public.task_pages ADD COLUMN IF NOT EXISTS icon_6 text;
+alter table public.bingo_settings ADD COLUMN IF NOT EXISTS marshal_password TEXT NOT NULL DEFAULT '1234';
+alter table public.bingo_tasks ADD COLUMN IF NOT EXISTS require_marshal BOOLEAN NOT NULL DEFAULT TRUE;
+alter table public.teams ADD COLUMN IF NOT EXISTS password text NOT NULL DEFAULT '';
+alter table public.tasks ADD COLUMN IF NOT EXISTS points int NOT NULL DEFAULT 0;
+alter table public.tasks add column if not exists is_live boolean not null default true;
+alter table public.bingo_tasks add column if not exists task_type  text not null default 'standard'
+                                      check (task_type in ('standard', 'answer'));
+alter table public.bingo_tasks add column if not exists answer_question  text;
+alter table public.bingo_tasks add column if not exists answer_text      text;
+alter table public.bingo_members ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'member'
+  CHECK (role IN ('member', 'observer'));
+alter table public.bingo_tasks ADD COLUMN IF NOT EXISTS maps_url text;
+alter table public.bingo_sections add column if not exists game_started boolean not null default false;
+alter table public.bingo_award_configs add column if not exists consolation_group_count int not null default 0;
+alter table public.bingo_award_configs add column if not exists holding_title text;
+alter table public.bingo_award_configs add column if not exists main_title text;
+alter table public.bingo_award_configs add column if not exists main_subtitle text;
+alter table public.bingo_award_configs add column if not exists main_tagline text;
+alter table public.bingo_settings ADD COLUMN IF NOT EXISTS photo_submissions_enabled boolean NOT NULL DEFAULT true;
+alter table public.bingo_tasks ADD COLUMN IF NOT EXISTS maps_label text;
+alter table public.bingo_settings ADD COLUMN IF NOT EXISTS time_up_message text NOT NULL DEFAULT 'Time''s up! Please return to the meeting point.',
+  ADD COLUMN IF NOT EXISTS time_up_label   text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS time_up_maps_url text NOT NULL DEFAULT '';
+alter table public.bingo_sections ADD COLUMN IF NOT EXISTS board_note text NOT NULL DEFAULT '',
+  ADD COLUMN IF NOT EXISTS board_note_every int NOT NULL DEFAULT 2;
+alter table public.bingo_tasks add column if not exists owner_id uuid;
+alter table public.bingo_sections add column if not exists owner_id uuid;
+alter table public.bingo_accounts add column if not exists can_bingo boolean not null default true;
+alter table public.bingo_accounts add column if not exists can_flag  boolean not null default false;
+alter table public.bingo_accounts add column if not exists active_section_id uuid;
+alter table public.bingo_settings add column if not exists template_section_id uuid;
+alter table public.bingo_tasks add column if not exists cloned_from uuid;
+alter table public.bingo_accounts add column if not exists facilitator_host uuid;
+alter table public.bingo_accounts add column if not exists access_expires_at timestamptz;
+alter table public.bingo_accounts add column if not exists display_name text;
+alter table public.bingo_accounts add column if not exists facilitator_session_id uuid;
+alter table public.bingo_tasks ADD COLUMN IF NOT EXISTS is_contest boolean NOT NULL DEFAULT false,
+  ADD COLUMN IF NOT EXISTS contest_game text NOT NULL DEFAULT 'speed-edit',
+  ADD COLUMN IF NOT EXISTS contest_bonus int NOT NULL DEFAULT 100;
+alter table public.bingo_sections ADD COLUMN IF NOT EXISTS tile_display text NOT NULL DEFAULT 'icon';
+alter table public.bingo_teams add column if not exists bonus_breakdown jsonb not null default '[]'::jsonb;
+alter table public.bingo_scans add column if not exists words text[] default '{}';
 
 -- ================= PHASE 2: EVERYTHING ELSE =================
 
@@ -298,14 +378,12 @@ alter publication supabase_realtime add table tasks;
 
 -- 1. Add in_grid flag to bingo_tasks
 --    Controls which tiles appear in the 5×5 player board (max 25).
-ALTER TABLE bingo_tasks
-  ADD COLUMN IF NOT EXISTS in_grid boolean NOT NULL DEFAULT false;
+-- [column hoisted]
 
 -- 2. Add password to bingo_teams
 --    Teams are identified by name + password combo.
 --    Existing teams get an empty password (they can still re-join with no password).
-ALTER TABLE bingo_teams
-  ADD COLUMN IF NOT EXISTS password text NOT NULL DEFAULT '';
+-- [column hoisted]
 
 
 -- ===== archive-sql/supabase-migration-bingo-award-config.sql =====
@@ -327,8 +405,7 @@ ALTER TABLE bingo_teams
 -- [table hoisted: bingo_award_configs]
 
 -- If the table already existed from an earlier run, add the new column.
-ALTER TABLE bingo_award_configs
-  ADD COLUMN IF NOT EXISTS slide_points JSONB NOT NULL DEFAULT '{}'::jsonb;
+-- [column hoisted]
 
 ALTER TABLE bingo_award_configs ENABLE ROW LEVEL SECURITY;
 
@@ -370,33 +447,8 @@ drop policy if exists "anon read bingo_board_cards"  on bingo_board_cards;
 drop policy if exists "anon write bingo_board_cards" on bingo_board_cards;
 create policy "anon read bingo_board_cards"  on bingo_board_cards for select using (true);
 create policy "anon write bingo_board_cards" on bingo_board_cards for all    using (true) with check (true);
-
--- Backfill placements from the legacy in_grid/sort_order columns.
--- [seed removed]
-
--- Optional: preview which duplicate cards the cleanup below will delete.
--- select t.id, t.title, s.name as compartment, t.created_at
---   from bingo_tasks t
---   join bingo_tasks orig
---     on lower(trim(orig.title)) = lower(trim(t.title))
---    and (orig.created_at < t.created_at or (orig.created_at = t.created_at and orig.id < t.id))
---   join bingo_sections s on s.id = t.section_id
---  where not exists (select 1 from bingo_board_cards bc where bc.task_id = t.id)
---    and not exists (select 1 from bingo_scans sc where sc.task_id = t.id)
---    and not exists (select 1 from bingo_photo_submissions ps where ps.task_id = t.id)
---    and not exists (select 1 from snake_tiles st where st.task_id = t.id);
-
--- Delete leftover duplicates from the old copy-per-board flow.
--- Only rows that are invisible to players are removed: never placed on a
--- board, never scanned, no photo submissions, not used by Snake & Ladder.
-delete from bingo_tasks t
- using bingo_tasks orig
- where lower(trim(orig.title)) = lower(trim(t.title))
-   and (orig.created_at < t.created_at or (orig.created_at = t.created_at and orig.id < t.id))
-   and not exists (select 1 from bingo_board_cards bc where bc.task_id = t.id)
-   and not exists (select 1 from bingo_scans sc where sc.task_id = t.id)
-   and not exists (select 1 from bingo_photo_submissions ps where ps.task_id = t.id)
-   and not exists (select 1 from snake_tiles st where st.task_id = t.id);
+-- [skipped: deleted game]
+-- [skipped: deleted game]
 
 -- Tell PostgREST to reload so the new table becomes visible immediately.
 notify pgrst, 'reload schema';
@@ -486,8 +538,7 @@ CREATE POLICY "anon write bingo_scans"       ON bingo_scans       FOR ALL    USI
 -- participants are allowed to access the game board.
 -- Run this in the Supabase SQL editor.
 
-ALTER TABLE bingo_settings
-  ADD COLUMN IF NOT EXISTS game_started BOOLEAN NOT NULL DEFAULT false;
+-- [column hoisted]
 
 
 -- ===== archive-sql/supabase-migration-bingo-members-unique.sql =====
@@ -544,26 +595,20 @@ CREATE POLICY "anon write bingo_members" ON bingo_members FOR ALL    USING (true
 -- marshal password and photo-submissions toggle. Only cards stay universal.
 -- Run this in the Supabase SQL editor for the "Flag Retrieval" project.
 
-alter table bingo_sections
-  add column if not exists timer_seconds int not null default 0,
-  add column if not exists timer_end_at timestamptz,
-  add column if not exists time_up_message text not null default '',
-  add column if not exists time_up_label text not null default '',
-  add column if not exists time_up_maps_url text not null default '',
-  add column if not exists marshal_password text not null default '1234',
-  add column if not exists photo_submissions_enabled boolean not null default true;
+-- [column hoisted]
 
 -- Seed every board from the old global settings so nothing changes at cutover.
-update bingo_sections s set
-  timer_seconds             = coalesce(g.timer_seconds, 0),
-  timer_end_at              = g.timer_end_at,
-  time_up_message           = coalesce(g.time_up_message, ''),
-  time_up_label             = coalesce(g.time_up_label, ''),
-  time_up_maps_url          = coalesce(g.time_up_maps_url, ''),
-  marshal_password          = coalesce(g.marshal_password, '1234'),
-  photo_submissions_enabled = coalesce(g.photo_submissions_enabled, true)
-from bingo_settings g
-where g.id = 'main';
+-- [skipped backfill: no existing data to migrate]
+-- update bingo_sections s set
+--   timer_seconds             = coalesce(g.timer_seconds, 0),
+--   timer_end_at              = g.timer_end_at,
+--   time_up_message           = coalesce(g.time_up_message, ''),
+--   time_up_label             = coalesce(g.time_up_label, ''),
+--   time_up_maps_url          = coalesce(g.time_up_maps_url, ''),
+--   marshal_password          = coalesce(g.marshal_password, '1234'),
+--   photo_submissions_enabled = coalesce(g.photo_submissions_enabled, true)
+-- from bingo_settings g
+-- where g.id = 'main';
 
 -- bingo_sections is already in the supabase_realtime publication (live
 -- game_started updates depend on it), so no publication change is needed.
@@ -584,8 +629,7 @@ create policy "public delete photo submissions" on bingo_photo_submissions
 -- Run this in the Supabase SQL editor
 
 -- Add points column to bingo_tasks (default 0)
-ALTER TABLE bingo_tasks
-  ADD COLUMN IF NOT EXISTS points INTEGER NOT NULL DEFAULT 0;
+-- [column hoisted]
 
 
 -- ===== archive-sql/supabase-migration-bingo-sections.sql =====
@@ -600,7 +644,7 @@ insert into bingo_sections (name, slug, sort_order)
   on conflict (slug) do nothing;
 
 -- bingo_tasks.section_id
-alter table bingo_tasks add column if not exists section_id uuid references bingo_sections(id) on delete cascade;
+-- [column hoisted]
 update bingo_tasks
    set section_id = (select id from bingo_sections where slug = 'default')
  where section_id is null;
@@ -608,7 +652,7 @@ alter table bingo_tasks alter column section_id set not null;
 create index if not exists bingo_tasks_section_idx on bingo_tasks (section_id);
 
 -- bingo_teams.section_id
-alter table bingo_teams add column if not exists section_id uuid references bingo_sections(id) on delete cascade;
+-- [column hoisted]
 update bingo_teams
    set section_id = (select id from bingo_sections where slug = 'default')
  where section_id is null;
@@ -616,7 +660,7 @@ alter table bingo_teams alter column section_id set not null;
 create index if not exists bingo_teams_section_idx on bingo_teams (section_id);
 
 -- bingo_settings.active_section_id (which section is live for players)
-alter table bingo_settings add column if not exists active_section_id uuid references bingo_sections(id);
+-- [column hoisted]
 update bingo_settings
    set active_section_id = (select id from bingo_sections where slug = 'default')
  where active_section_id is null;
@@ -659,8 +703,7 @@ alter publication supabase_realtime add table bingo_task_links;
 -- ── Bingo Dash: Team bonus points (other-game contributions) ─────────────────
 -- Run once in the Supabase SQL editor.
 
-ALTER TABLE bingo_teams
-  ADD COLUMN IF NOT EXISTS bonus_points INTEGER NOT NULL DEFAULT 0;
+-- [column hoisted]
 
 -- Tell PostgREST to reload so the new column is visible immediately.
 notify pgrst, 'reload schema';
@@ -670,8 +713,7 @@ notify pgrst, 'reload schema';
 -- ── Bingo Dash: Team photo (icon for winner slides) ─────────────────────────
 -- Run once in the Supabase SQL editor.
 
-ALTER TABLE bingo_teams
-  ADD COLUMN IF NOT EXISTS photo_url TEXT;
+-- [column hoisted]
 
 -- Tell PostgREST to reload so the new column is visible immediately.
 notify pgrst, 'reload schema';
@@ -707,8 +749,7 @@ notify pgrst, 'reload schema';
 -- Run this in the Supabase SQL editor
 
 -- 1. Add category column to bingo_tasks (default empty string)
-ALTER TABLE bingo_tasks
-  ADD COLUMN IF NOT EXISTS category TEXT NOT NULL DEFAULT '';
+-- [column hoisted]
 
 -- 2. Create bingo_settings table (single-row config)
 -- [table hoisted: bingo_settings]
@@ -731,44 +772,28 @@ BEGIN
       FOR ALL TO anon USING (true) WITH CHECK (true);
   END IF;
 END $$;
-
-
--- ===== archive-sql/supabase-migration-facilitators.sql =====
--- Migration: Shape Sequence facilitator system
--- Run in Supabase SQL Editor
-
--- 1. Add accepting_submissions flag to shape_rounds
-ALTER TABLE shape_rounds ADD COLUMN IF NOT EXISTS accepting_submissions boolean NOT NULL DEFAULT false;
-
--- 2. Facilitators table
--- [table hoisted: shape_facilitators]
-
--- Add facilitator_num to existing table if upgrading
-ALTER TABLE shape_facilitators ADD COLUMN IF NOT EXISTS facilitator_num integer;
-
-CREATE INDEX IF NOT EXISTS idx_shape_facilitators_group ON shape_facilitators(group_name);
-
-ALTER PUBLICATION supabase_realtime ADD TABLE shape_facilitators;
+-- [skipped: deleted game]
+-- [skipped: deleted game]
 
 
 -- ===== archive-sql/supabase-migration-icons.sql =====
 -- Migration: Add icon columns to task_pages table
 -- Run this in the Supabase SQL Editor
 
-ALTER TABLE task_pages ADD COLUMN IF NOT EXISTS icon_1 text;
-ALTER TABLE task_pages ADD COLUMN IF NOT EXISTS icon_2 text;
-ALTER TABLE task_pages ADD COLUMN IF NOT EXISTS icon_3 text;
-ALTER TABLE task_pages ADD COLUMN IF NOT EXISTS icon_4 text;
-ALTER TABLE task_pages ADD COLUMN IF NOT EXISTS icon_5 text;
-ALTER TABLE task_pages ADD COLUMN IF NOT EXISTS icon_6 text;
+-- [column hoisted]
+-- [column hoisted]
+-- [column hoisted]
+-- [column hoisted]
+-- [column hoisted]
+-- [column hoisted]
 
 
 -- ===== archive-sql/supabase-migration-marshal-password.sql =====
 -- Global marshal password (shared across all tasks)
-ALTER TABLE bingo_settings ADD COLUMN IF NOT EXISTS marshal_password TEXT NOT NULL DEFAULT '1234';
+-- [column hoisted]
 
 -- Per-task toggle: require marshal password to complete (default ON)
-ALTER TABLE bingo_tasks ADD COLUMN IF NOT EXISTS require_marshal BOOLEAN NOT NULL DEFAULT TRUE;
+-- [column hoisted]
 
 
 -- ===== archive-sql/supabase-migration-members.sql =====
@@ -786,14 +811,14 @@ alter publication supabase_realtime add table team_members;
 -- Add password column to teams table
 -- Run this in the Supabase SQL editor for the "Flag Retrieval" project
 
-ALTER TABLE teams ADD COLUMN IF NOT EXISTS password text NOT NULL DEFAULT '';
+-- [column hoisted]
 
 
 -- ===== archive-sql/supabase-migration-points.sql =====
 -- Migration: Add points column to tasks table
 -- Run this in the Supabase SQL Editor
 
-ALTER TABLE tasks ADD COLUMN IF NOT EXISTS points int NOT NULL DEFAULT 0;
+-- [column hoisted]
 
 
 -- ===== archive-sql/supabase-migration-task-is-live.sql =====
@@ -802,8 +827,7 @@ ALTER TABLE tasks ADD COLUMN IF NOT EXISTS points int NOT NULL DEFAULT 0;
 -- Cards with is_live = false stay in the admin library (unused).
 -- Defaults to true so existing tasks remain visible until an admin curates them.
 
-alter table tasks
-  add column if not exists is_live boolean not null default true;
+-- [column hoisted]
 
 create index if not exists tasks_is_live_idx on tasks(is_live);
 
@@ -955,37 +979,16 @@ create policy "team_scans: participant upsert update"
 
 create policy "team_scans: admin delete"
   on team_scans for delete using (auth.role() = 'authenticated');
-
--- ── shape_rounds ─────────────────────────────────────────────
-alter table shape_rounds enable row level security;
-
-create policy "shape_rounds: public read"
-  on shape_rounds for select using (true);
-
-create policy "shape_rounds: admin write"
-  on shape_rounds for insert with check (auth.role() = 'authenticated');
-
-create policy "shape_rounds: admin update"
-  on shape_rounds for update using (auth.role() = 'authenticated');
-
-create policy "shape_rounds: admin delete"
-  on shape_rounds for delete using (auth.role() = 'authenticated');
-
--- ── shape_results ────────────────────────────────────────────
-alter table shape_results enable row level security;
-
-create policy "shape_results: public read"
-  on shape_results for select using (true);
-
--- Facilitators submit results without being logged in
-create policy "shape_results: facilitator submit"
-  on shape_results for insert with check (true);
-
-create policy "shape_results: admin update"
-  on shape_results for update using (auth.role() = 'authenticated');
-
-create policy "shape_results: admin delete"
-  on shape_results for delete using (auth.role() = 'authenticated');
+-- [skipped: deleted game]
+-- [skipped: deleted game]
+-- [skipped: deleted game]
+-- [skipped: deleted game]
+-- [skipped: deleted game]
+-- [skipped: deleted game]
+-- [skipped: deleted game]
+-- [skipped: deleted game]
+-- [skipped: deleted game]
+-- [skipped: deleted game]
 
 -- ── task_photos ──────────────────────────────────────────────
 alter table task_photos enable row level security;
@@ -1001,29 +1004,17 @@ create policy "task_photos: admin update"
 
 create policy "task_photos: admin delete"
   on task_photos for delete using (auth.role() = 'authenticated');
-
--- ── shape_facilitators ───────────────────────────────────────
-alter table shape_facilitators enable row level security;
-
-create policy "shape_facilitators: public read"
-  on shape_facilitators for select using (true);
-
-create policy "shape_facilitators: facilitator register"
-  on shape_facilitators for insert with check (true);
-
-create policy "shape_facilitators: admin delete"
-  on shape_facilitators for delete using (auth.role() = 'authenticated');
+-- [skipped: deleted game]
+-- [skipped: deleted game]
+-- [skipped: deleted game]
+-- [skipped: deleted game]
 
 
 -- ===== supabase/migrations/20260415_bingo_tasks_answer_type.sql =====
 -- Migration: add answer-input card type to bingo_tasks
 -- Run this in the Supabase SQL editor or via `supabase db push`.
 
-alter table bingo_tasks
-  add column if not exists task_type  text not null default 'standard'
-                                      check (task_type in ('standard', 'answer')),
-  add column if not exists answer_question  text,
-  add column if not exists answer_text      text;
+-- [column hoisted]
 
 comment on column bingo_tasks.task_type is
   '''standard'' = marshal-verified completion; ''answer'' = auto-complete on correct typed answer';
@@ -1035,13 +1026,10 @@ comment on column bingo_tasks.answer_text is
 
 -- ===== supabase/migrations/20260421_bingo_features.sql =====
 -- Observer role on members
-ALTER TABLE bingo_members
-  ADD COLUMN IF NOT EXISTS role text NOT NULL DEFAULT 'member'
-  CHECK (role IN ('member', 'observer'));
+-- [column hoisted]
 
 -- Google Maps URL on tasks
-ALTER TABLE bingo_tasks
-  ADD COLUMN IF NOT EXISTS maps_url text;
+-- [column hoisted]
 
 -- Photo submissions for dual-path task completion
 -- [table hoisted: bingo_photo_submissions]
@@ -1055,26 +1043,21 @@ CREATE POLICY "public update photo submissions" ON bingo_photo_submissions FOR U
 
 -- ===== supabase/migrations/20260422_bingo_section_game_started.sql =====
 -- Add per-section game_started so multiple games can run independently
-alter table bingo_sections add column if not exists game_started boolean not null default false;
+-- [column hoisted]
 
 
 -- ===== supabase/migrations/20260427_award_main_and_groups.sql =====
 -- Award slides: support a "main" branded opener (HSBC-themed) and a
 -- "consolation_group" prize kind that reveals 3 ranks per slide.
-alter table bingo_award_configs
-  add column if not exists consolation_group_count int not null default 0;
+-- [column hoisted]
 
-alter table bingo_award_configs
-  add column if not exists holding_title text;
+-- [column hoisted]
 
-alter table bingo_award_configs
-  add column if not exists main_title text;
+-- [column hoisted]
 
-alter table bingo_award_configs
-  add column if not exists main_subtitle text;
+-- [column hoisted]
 
-alter table bingo_award_configs
-  add column if not exists main_tagline text;
+-- [column hoisted]
 
 
 -- ===== supabase/migrations/20260427_bingo_sections_realtime.sql =====
@@ -1096,14 +1079,12 @@ end $$;
 -- ===== supabase/migrations/20260428_bingo_photo_submissions_toggle.sql =====
 -- Global toggle (in marshal admin) to enable/disable photo submissions
 -- across every photo-type card. Default ON so existing behavior is unchanged.
-ALTER TABLE bingo_settings
-  ADD COLUMN IF NOT EXISTS photo_submissions_enabled boolean NOT NULL DEFAULT true;
+-- [column hoisted]
 
 
 -- ===== supabase/migrations/20260428_bingo_tasks_maps_label.sql =====
 -- Optional friendly label for the maps button on a task
-ALTER TABLE bingo_tasks
-  ADD COLUMN IF NOT EXISTS maps_label text;
+-- [column hoisted]
 
 
 -- ===== supabase/migrations/20260429_bingo_members_realtime.sql =====
@@ -1156,10 +1137,7 @@ ALTER TABLE bingo_tasks
 -- Time-up alarm payload, edited by admin and shown to all players when the
 -- game timer ends. Defaults give a sensible message in case admin forgets to
 -- set them before the timer runs out.
-ALTER TABLE bingo_settings
-  ADD COLUMN IF NOT EXISTS time_up_message text NOT NULL DEFAULT 'Time''s up! Please return to the meeting point.',
-  ADD COLUMN IF NOT EXISTS time_up_label   text NOT NULL DEFAULT '',
-  ADD COLUMN IF NOT EXISTS time_up_maps_url text NOT NULL DEFAULT '';
+-- [column hoisted]
 
 
 -- ===== supabase/migrations/20260610_bingo_board_cards.sql =====
@@ -1190,33 +1168,8 @@ drop policy if exists "anon read bingo_board_cards"  on bingo_board_cards;
 drop policy if exists "anon write bingo_board_cards" on bingo_board_cards;
 create policy "anon read bingo_board_cards"  on bingo_board_cards for select using (true);
 create policy "anon write bingo_board_cards" on bingo_board_cards for all    using (true) with check (true);
-
--- Backfill placements from the legacy in_grid/sort_order columns.
--- [seed removed]
-
--- Optional: preview which duplicate cards the cleanup below will delete.
--- select t.id, t.title, s.name as compartment, t.created_at
---   from bingo_tasks t
---   join bingo_tasks orig
---     on lower(trim(orig.title)) = lower(trim(t.title))
---    and (orig.created_at < t.created_at or (orig.created_at = t.created_at and orig.id < t.id))
---   join bingo_sections s on s.id = t.section_id
---  where not exists (select 1 from bingo_board_cards bc where bc.task_id = t.id)
---    and not exists (select 1 from bingo_scans sc where sc.task_id = t.id)
---    and not exists (select 1 from bingo_photo_submissions ps where ps.task_id = t.id)
---    and not exists (select 1 from snake_tiles st where st.task_id = t.id);
-
--- Delete leftover duplicates from the old copy-per-board flow.
--- Only rows that are invisible to players are removed: never placed on a
--- board, never scanned, no photo submissions, not used by Snake & Ladder.
-delete from bingo_tasks t
- using bingo_tasks orig
- where lower(trim(orig.title)) = lower(trim(t.title))
-   and (orig.created_at < t.created_at or (orig.created_at = t.created_at and orig.id < t.id))
-   and not exists (select 1 from bingo_board_cards bc where bc.task_id = t.id)
-   and not exists (select 1 from bingo_scans sc where sc.task_id = t.id)
-   and not exists (select 1 from bingo_photo_submissions ps where ps.task_id = t.id)
-   and not exists (select 1 from snake_tiles st where st.task_id = t.id);
+-- [skipped: deleted game]
+-- [skipped: deleted game]
 
 -- Tell PostgREST to reload so the new table becomes visible immediately.
 notify pgrst, 'reload schema';
@@ -1228,9 +1181,7 @@ notify pgrst, 'reload schema';
 -- 2 completed boxes"). board_note_every drives a live item counter:
 -- players see floor(completed / board_note_every) items to collect.
 -- Set board_note_every to 0 to hide the counter; empty note hides the box.
-ALTER TABLE bingo_sections
-  ADD COLUMN IF NOT EXISTS board_note text NOT NULL DEFAULT '',
-  ADD COLUMN IF NOT EXISTS board_note_every int NOT NULL DEFAULT 2;
+-- [column hoisted]
 
 
 -- ===== supabase/migrations/20260616_bingo_scoreboard_realtime.sql =====
@@ -1353,8 +1304,8 @@ create trigger on_auth_user_created_bingo
 -- 3. Ownership columns ---------------------------------------------------
 -- Nullable; NULL = main/owner (all existing rows). New rows get the creator's
 -- uid (set by the app, and defended by RLS in a later stage).
-alter table public.bingo_tasks    add column if not exists owner_id uuid references auth.users(id) on delete set null;
-alter table public.bingo_sections add column if not exists owner_id uuid references auth.users(id) on delete set null;
+-- [column hoisted]
+-- [column hoisted]
 
 create index if not exists bingo_tasks_owner_idx    on public.bingo_tasks(owner_id);
 create index if not exists bingo_sections_owner_idx on public.bingo_sections(owner_id);
@@ -1389,10 +1340,7 @@ end $$;
 -- 1. Game permissions + per-account active board pointer.
 --    can_bingo defaults true (matches today's implicit behavior for
 --    approved subs); can_flag is opt-in per account.
-alter table public.bingo_accounts
-  add column if not exists can_bingo boolean not null default true,
-  add column if not exists can_flag  boolean not null default false,
-  add column if not exists active_section_id uuid references public.bingo_sections(id) on delete set null;
+-- [column hoisted]
 
 update public.bingo_accounts set can_bingo = true, can_flag = true where role = 'owner';
 
@@ -1467,13 +1415,11 @@ notify pgrst, 'reload schema';
 -- ============================================================
 
 -- 1. Owner-designated template board (cloned for every newly approved account).
-alter table public.bingo_settings
-  add column if not exists template_section_id uuid references public.bingo_sections(id) on delete set null;
+-- [column hoisted]
 
 -- 2. Copy lineage for copy-on-use: which task a task was cloned from.
 --    Lets the app reuse an existing copy instead of duplicating again.
-alter table public.bingo_tasks
-  add column if not exists cloned_from uuid references public.bingo_tasks(id) on delete set null;
+-- [column hoisted]
 create index if not exists bingo_tasks_cloned_from_idx on public.bingo_tasks(cloned_from);
 
 -- 3. Deep clone: board + placed cards (with pages/photos/links) + grid slots
@@ -1648,35 +1594,7 @@ create policy bingo_settings_owner_write on public.bingo_settings
   with check (public.is_bingo_owner());
 
 notify pgrst, 'reload schema';
-
-
--- ===== supabase/migrations/20260703_multitenant_rls.sql =====
--- ============================================================
--- Rental accounts, Phase C: multi-tenant RLS hardening
---
--- RUN ONLY AFTER the Phase B build is deployed and verified, and NEVER on
--- an event day. Rollback script at the bottom un-bricks a live event.
---
--- Posture (decided in plan):
---   * SELECT stays open everywhere — anonymous players, projectors and
---     admins previewing links all read with the anon key. Read isolation
---     between renters is UI-level only (documented caveat).
---   * Writes to CONFIG tables become authenticated + ownership-checked.
---   * GAMEPLAY tables keep anonymous writes (players have no auth.uid())
---     but those policies are restricted TO anon; authenticated sessions
---     get tenant-scoped policies instead, so a logged-in admin can never
---     mutate another tenant's teams/scans even if the UI regressed.
---   * Tenancy: owner_id IS NULL = house (Bryan) data.
---
--- DELIBERATELY NOT HARDENED (out of rental scope, anonymous admin pages
--- still write them): bingo_award_configs, snake_*, vote_*, shape_*.
--- KNOWN BREAKAGE after this runs: the anonymous Snake & Ladder admin
--- (/snake-ladder/admin) creates its cards in bingo_tasks/bingo_sections/
--- bingo_task_pages — those inserts will be rejected until that admin is
--- moved behind a login. Flagged to Bryan.
---
--- BEFORE RUNNING, confirm in the SQL editor (plan "open items"):
---   select * from pg_policies where schemaname='public' order by tablename;
+-- [skipped: deleted game]
 --   \d public.settings   \d public.bingo_challenge_sections
 -- ============================================================
 
@@ -2000,9 +1918,7 @@ notify pgrst, 'reload schema';
 -- ============================================================
 
 -- ── 1. Columns ──────────────────────────────────────────────
-alter table public.bingo_accounts
-  add column if not exists facilitator_host uuid references public.bingo_accounts(id) on delete cascade,
-  add column if not exists access_expires_at timestamptz;
+-- [column hoisted]
 
 -- ── 2. can_use_game: expired accounts lose game access ──────
 create or replace function public.can_use_game(g text)
@@ -2197,10 +2113,7 @@ create policy "hosts manage own passes" on public.bingo_facilitator_sessions
   with check (public.is_bingo_owner() or host_id = auth.uid());
 
 -- ── 2. Roster columns on the account ────────────────────────
-alter table public.bingo_accounts
-  add column if not exists display_name text,
-  add column if not exists facilitator_session_id uuid
-    references public.bingo_facilitator_sessions(id) on delete set null;
+-- [column hoisted]
 
 create index if not exists bingo_accounts_fac_session_idx
   on public.bingo_accounts(facilitator_session_id);
@@ -2593,10 +2506,7 @@ notify pgrst, 'reload schema';
 --     without their own board being touched at all.
 
 -- ── 1. Cards can be marked as contest cards ──────────────────────────────────
-ALTER TABLE bingo_tasks
-  ADD COLUMN IF NOT EXISTS is_contest boolean NOT NULL DEFAULT false,
-  ADD COLUMN IF NOT EXISTS contest_game text NOT NULL DEFAULT 'speed-edit',
-  ADD COLUMN IF NOT EXISTS contest_bonus int NOT NULL DEFAULT 100;
+-- [column hoisted]
 
 COMMENT ON COLUMN bingo_tasks.is_contest IS
   'When true this card is played as a head-to-head duel between two teams instead of a solo task.';
@@ -2658,8 +2568,7 @@ END $$;
 --   'words' — the CATEGORY in readable caps plus a shortened title
 -- Players complained the full title crammed into a ~70px tile was unreadable,
 -- so the facilitator now picks per board in the Bingo Dash admin.
-ALTER TABLE bingo_sections
-  ADD COLUMN IF NOT EXISTS tile_display text NOT NULL DEFAULT 'icon';
+-- [column hoisted]
 
 ALTER TABLE bingo_sections
   DROP CONSTRAINT IF EXISTS bingo_sections_tile_display_check;
@@ -2667,26 +2576,7 @@ ALTER TABLE bingo_sections
 ALTER TABLE bingo_sections
   ADD CONSTRAINT bingo_sections_tile_display_check
   CHECK (tile_display IN ('icon', 'words'));
-
-
--- ===== supabase/migrations/20260804_bingo_scan_words.sql =====
--- AI Team Building cards on a Bingo Dash board
---
--- The AITB missions that carry an interactive system (Nerf cups, the jingle
--- roulette, the cinematic card deal, the animal draw) and the Ping Pong 7-word
--- pitch all produce a RESULT the whole team must agree on. On /aitb that result
--- lives in aitb_progress.words; a bingo board has no aitb_progress row, so the
--- equivalent per-team-per-card row is bingo_scans.
---
--- Without this column every phone in a team would spin its own roulette and
--- deal its own cards — two teammates would be working from different prompts.
--- With it, the first draw is written once and every other phone reads it back
--- through the bingo_scans realtime subscription the board already runs.
---
--- Safe to re-run.
-
-alter table public.bingo_scans
-  add column if not exists words text[] not null default '{}';
+-- [skipped: deleted game]
 
 comment on column public.bingo_scans.words is
   'Result slots for AI Team Building cards — the drawn/typed words for this team on this card. Empty for every other card type.';
@@ -2697,5 +2587,4 @@ comment on column public.bingo_scans.words is
 -- Each entry is { "label": string, "points": number }; the team's bonus_points
 -- column stays the authoritative total (sum of the entries) so the projector,
 -- award slides and scoreboard keep reading a single number.
-alter table public.bingo_teams
-  add column if not exists bonus_breakdown jsonb not null default '[]'::jsonb;
+-- [column hoisted]
