@@ -199,27 +199,6 @@ export function BingoDashParticipant() {
     return () => { supabase.removeChannel(channel) }
   }, [aitbActivity, scanRecord?.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Snake & Ladder mode: load teams + board config
-  useEffect(() => {
-    if (!isSnakeLadder) return
-    let cancelled = false
-    ;(async () => {
-      const settingsRes = await supabase.from('snake_settings').select('active_game_id').eq('id', 'main').maybeSingle()
-      const activeId = settingsRes.data?.active_game_id as string | null
-      if (!activeId || cancelled) return
-      const [gameRes, teamsRes] = await Promise.all([
-        supabase.from('snake_games').select('snakes, ladders').eq('id', activeId).single(),
-        supabase.from('snake_teams').select('*').eq('game_id', activeId).order('sort_order'),
-      ])
-      if (cancelled) return
-      if (gameRes.data) {
-        setSnakeSnakes((gameRes.data.snakes ?? {}) as Record<string, number>)
-        setSnakeLadders((gameRes.data.ladders ?? {}) as Record<string, number>)
-      }
-      if (teamsRes.data) setSnakeTeams(teamsRes.data)
-    })()
-    return () => { cancelled = true }
-  }, [isSnakeLadder])
 
   // Persist answer inputs to localStorage
   useEffect(() => {

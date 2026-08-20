@@ -3,7 +3,6 @@ import { BrowserRouter, Routes, Route, Outlet, Navigate } from 'react-router-dom
 import { BingoAuthProvider } from './hooks/useBingoAuth'
 import { RequireBingoAdmin } from './components/RequireBingoAdmin'
 
-const GameSelector          = lazy(() => import('./pages/GameSelector').then(m => ({ default: m.GameSelector })))
 const InstructionsSlide     = lazy(() => import('./pages/InstructionsSlide').then(m => ({ default: m.InstructionsSlide })))
 const InstructionsHub       = lazy(() => import('./pages/InstructionsHub').then(m => ({ default: m.InstructionsHub })))
 const EventSlide            = lazy(() => import('./pages/EventSlide').then(m => ({ default: m.EventSlide })))
@@ -31,7 +30,7 @@ export default function App() {
     <BrowserRouter>
       <Suspense fallback={null}>
         <Routes>
-          <Route path="/" element={<GameSelector />} />
+          <Route path="/" element={<Navigate to="/bingo-dash" replace />} />
           <Route path="/instructions" element={<InstructionsHub />} />
           <Route path="/instructions/:deckId" element={<InstructionsSlide />} />
           <Route path="/event" element={<EventSlide />} />
@@ -67,7 +66,7 @@ export default function App() {
           <Route path="/bingo-dash/teams/:sectionSlug" element={<BingoDashAllTeamsMembers />} />
 
           {/* Anything else → the hub */}
-          <Route path="*" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/bingo-dash" replace />} />
         </Routes>
       </Suspense>
     </BrowserRouter>
