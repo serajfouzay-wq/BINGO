@@ -9,6 +9,7 @@ import { BINGO_LINES, buildBingoSlots, completedBingoLines } from '../lib/bingoL
 import { TileFace } from '../components/BingoTileFace'
 import { SharedLibraryPanel } from '../components/SharedLibraryPanel'
 import { SCOREBOARD_THEMES, getScoreboardTheme } from '../lib/scoreboardThemes'
+import { Menu, MenuItem, MenuDivider } from '../components/AdminHeader'
 import { CONTEST_GAMES, getContestGame } from '../lib/contestGames'
 import { duelBonusByTeam } from '../hooks/useBingoDuels'
 
@@ -1961,70 +1962,72 @@ export function BingoDashAdmin() {
               <p className="text-[10px] text-gray-600 uppercase tracking-widest font-bold hidden sm:block">Control Hub</p>
             </div>
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <div className="hidden sm:flex items-center gap-3 px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 mr-1">
-              <span className="text-xs font-black text-violet-400">{scopedTasks.length}</span>
-              <span className="text-[10px] text-gray-600 uppercase tracking-wider">challenges</span>
-              <span className="w-px h-3 bg-white/10" />
-              <span className="text-xs font-black text-emerald-400">{scopedTeams.length}</span>
-              <span className="text-[10px] text-gray-600 uppercase tracking-wider">teams</span>
+          <div className="flex items-center gap-1.5">
+            {/* Counts stay visible — they are the quickest sanity check that
+                the right board is selected before you start a game. */}
+            <div className="hidden md:flex items-center gap-2.5 px-3 py-1.5 rounded-xl bg-white/5 border border-white/10 mr-2">
+              <span className="text-sm font-black text-violet-300">{scopedTasks.length}</span>
+              <span className="text-[10px] text-white/35 uppercase tracking-wider">cards</span>
+              <span className="w-px h-3.5 bg-white/10" />
+              <span className="text-sm font-black text-emerald-300">{scopedTeams.length}</span>
+              <span className="text-[10px] text-white/35 uppercase tracking-wider">teams</span>
             </div>
+
+            {/* The one thing handed to a room full of people — kept as a
+                real button, not buried in a menu. */}
             <button
               onClick={() => { setShowJoinLink(true); setJoinLinkCopied(false); setJoinLinkTab('player') }}
-              className="px-3 py-1.5 rounded-lg text-sm font-medium text-emerald-400 border border-emerald-800 hover:bg-emerald-950/60 transition-colors"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black text-gray-950 bg-emerald-400 hover:bg-emerald-300 active:scale-95 transition-all shadow-lg shadow-emerald-500/20"
             >
-              Join Link / QR
+              <span className="text-base leading-none">📱</span>
+              <span className="hidden sm:inline">Join Link</span>
             </button>
-            <a href={playerViewPath} target="_blank" rel="noopener noreferrer"
-              className="px-3 py-1.5 rounded-lg text-sm font-medium text-violet-400 border border-violet-800 hover:bg-violet-950/60 transition-colors">
-              Player View ↗
-            </a>
-            <a href={currentBoard ? `/bingo-dash/projector/${currentBoard.slug}` : '/bingo-dash/projector'} target="_blank" rel="noopener noreferrer"
-              className="px-3 py-1.5 rounded-lg text-sm font-medium text-amber-400 border border-amber-800 hover:bg-amber-950/60 transition-colors">
-              Scoreboard ↗
-            </a>
-            <button
-              onClick={() => setActiveTab('teams')}
-              className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-400 border border-gray-700 hover:bg-white/5 transition-colors"
-            >
-              View Teams
-            </button>
-            <button
-              onClick={() => { setShowImport(true); setImportText(''); setImportPreview(null); setImportError('') }}
-              className="px-4 py-2 bg-violet-600 text-white rounded-lg hover:bg-violet-500 text-sm font-bold transition-colors shadow-lg shadow-violet-900/40"
-            >
-              Import
-            </button>
-            {isOwner && (
-              <button
-                onClick={() => navigate('/bingo-dash/accounts')}
-                className="px-3 py-1.5 rounded-lg text-sm font-medium text-sky-400 border border-sky-800 hover:bg-sky-950/60 transition-colors"
-              >
-                Accounts
-              </button>
-            )}
-            {/* A trainer lead runs their own crew; a facilitator is on someone
-                else's, so they get no invite of their own. */}
-            {!isOwner && !account?.facilitator_host && (
-              <button
-                onClick={() => navigate('/bingo-dash/crew')}
-                title="Invite helpers to facilitate your event"
-                className="px-3 py-1.5 rounded-lg text-sm font-medium text-sky-400 border border-sky-800 hover:bg-sky-950/60 transition-colors"
-              >
-                My crew
-              </button>
-            )}
-            <div className="flex items-center gap-2 pl-2 border-l border-white/10">
-              <span className="hidden md:block text-[11px] text-gray-500 max-w-[140px] truncate" title={account?.email ?? ''}>
-                {account?.email}
-              </span>
-              <button
-                onClick={signOut}
-                className="px-3 py-1.5 rounded-lg text-sm font-medium text-gray-400 border border-gray-700 hover:bg-white/5 transition-colors"
-              >
-                Sign out
-              </button>
-            </div>
+
+            <Menu label="Open" icon="🖥">
+              <MenuItem icon="🎯" label="Player view" hint="What participants see"
+                href={playerViewPath} />
+              <MenuItem icon="📺" label="Scoreboard" hint="Projector display"
+                href={currentBoard ? `/bingo-dash/projector/${currentBoard.slug}` : '/bingo-dash/projector'} />
+              <MenuItem icon="🎬" label="Event slides" hint="Briefing, groupings, awards"
+                to="/bingo-dash/slides" />
+            </Menu>
+
+            <Menu label="Manage" icon="⚙️">
+              <MenuItem icon="👥" label="Teams" hint="Rosters and scores"
+                onClick={() => setActiveTab('teams')} />
+              <MenuItem icon="🃏" label="Card library" hint="All your challenges"
+                onClick={() => setActiveTab('library')} />
+              <MenuItem icon="📸" label="Submissions" hint="Review photo evidence"
+                onClick={() => setActiveTab('submissions')} />
+              <MenuDivider />
+              <MenuItem icon="📥" label="Import cards" hint="Paste rows to bulk-add"
+                onClick={() => { setShowImport(true); setImportText(''); setImportPreview(null); setImportError('') }} />
+              {!isOwner && !account?.facilitator_host && (
+                <MenuItem icon="🤝" label="My crew" hint="Invite helpers to your event"
+                  to="/bingo-dash/crew" />
+              )}
+              {isOwner && <MenuItem icon="🤝" label="Crew passes" hint="Bring co-trainers in" to="/bingo-dash/crew" />}
+              <MenuItem icon="🔗" label="Shared events" hint="Run a day with another trainer"
+                to="/bingo-dash/events" />
+              {isOwner && (
+                <>
+                  <MenuDivider />
+                  <MenuItem icon="🔑" label="Accounts" hint="Approvals, plans and limits"
+                    to="/bingo-dash/accounts" />
+                </>
+              )}
+            </Menu>
+
+            <Menu label={account?.email?.split('@')[0] ?? 'Account'} icon="👤">
+              <div className="px-4 py-3 border-b border-white/8">
+                <p className="text-[10px] uppercase tracking-widest text-white/35">Signed in as</p>
+                <p className="text-sm font-bold text-white truncate">{account?.email}</p>
+                {isOwner && <span className="inline-block mt-1.5 px-2 py-0.5 rounded-full bg-violet-500/20 text-violet-300 text-[10px] font-black uppercase">Owner</span>}
+              </div>
+              <MenuItem icon="🏢" label="My account" hint="Company, plan and usage" to="/bingo-dash/account" />
+              <MenuDivider />
+              <MenuItem icon="🚪" label="Sign out" onClick={signOut} />
+            </Menu>
           </div>
         </div>
 
