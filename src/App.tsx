@@ -25,6 +25,7 @@ const BingoDashAccounts     = lazy(() => import('./pages/BingoDashAccounts').the
 const BingoDashJoinCrew     = lazy(() => import('./pages/BingoDashJoinCrew').then(m => ({ default: m.BingoDashJoinCrew })))
 const BingoDashCrew         = lazy(() => import('./pages/BingoDashCrew').then(m => ({ default: m.BingoDashCrew })))
 const BingoDashAccount      = lazy(() => import('./pages/BingoDashAccount').then(m => ({ default: m.BingoDashAccount })))
+const BingoDashEvents       = lazy(() => import('./pages/BingoDashEvents').then(m => ({ default: m.BingoDashEvents })))
 
 export default function App() {
   return (
@@ -47,6 +48,7 @@ export default function App() {
             <Route path="/bingo-dash/accounts" element={<RequireBingoAdmin ownerOnly><BingoDashAccounts /></RequireBingoAdmin>} />
             <Route path="/bingo-dash/crew" element={<RequireBingoAdmin><BingoDashCrew /></RequireBingoAdmin>} />
             <Route path="/bingo-dash/account" element={<RequireBingoAdmin><BingoDashAccount /></RequireBingoAdmin>} />
+            <Route path="/bingo-dash/events" element={<RequireBingoAdmin><BingoDashEvents /></RequireBingoAdmin>} />
             <Route path="/bingo-dash/login" element={<RequireBingoAdmin><Navigate to="/bingo-dash/admin" replace /></RequireBingoAdmin>} />
             {/* Crew pass landing — deliberately NOT gated: helpers arrive
                 signed out and the page signs them in itself */}
