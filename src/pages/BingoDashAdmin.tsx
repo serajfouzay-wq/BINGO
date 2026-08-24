@@ -8,6 +8,7 @@ import type { BingoTask, BingoTeam, BingoScan, BingoSettings, BingoSection, Bing
 import { BINGO_LINES, buildBingoSlots, completedBingoLines } from '../lib/bingoLines'
 import { TileFace } from '../components/BingoTileFace'
 import { SharedLibraryPanel } from '../components/SharedLibraryPanel'
+import { SCOREBOARD_THEMES, getScoreboardTheme } from '../lib/scoreboardThemes'
 import { CONTEST_GAMES, getContestGame } from '../lib/contestGames'
 import { duelBonusByTeam } from '../hooks/useBingoDuels'
 
@@ -2309,6 +2310,38 @@ export function BingoDashAdmin() {
               </div>
             </div>
           </div>
+        </section>
+
+        {/* ── Scoreboard Theme ──────────────────────────────────────────────── */}
+        <section className="mb-8">
+          <h2 className="text-xl font-bold text-white mb-2">Scoreboard Theme</h2>
+          <p className="text-xs text-gray-500 mb-3">
+            How the projector looks for this board. This is a legibility choice as much as a visual
+            one — a dark scoreboard is unreadable in a function room with windows.
+          </p>
+          {(() => {
+            const current = getScoreboardTheme(currentBoard?.scoreboard_theme).key
+            return (
+              <div className="grid sm:grid-cols-3 gap-2">
+                {SCOREBOARD_THEMES.map(t => (
+                  <button
+                    key={t.key}
+                    onClick={() => { if (current !== t.key) updateBoardSettings({ scoreboard_theme: t.key }) }}
+                    className={`p-4 rounded-lg text-left border transition-colors ${
+                      current === t.key
+                        ? 'bg-violet-500 border-violet-400 text-white'
+                        : 'bg-gray-950 border-white/15 text-gray-300 hover:border-violet-500'
+                    }`}
+                  >
+                    <p className="text-sm font-bold">{t.name}</p>
+                    <p className={`text-[11px] mt-0.5 leading-snug ${current === t.key ? 'text-white/75' : 'text-gray-500'}`}>
+                      {t.hint}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )
+          })()}
         </section>
 
         {/* ── Marshal Password ──────────────────────────────────────────────── */}
