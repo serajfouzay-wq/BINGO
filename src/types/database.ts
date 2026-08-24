@@ -86,6 +86,8 @@ export interface BoardTimer {
 }
 
 export interface BingoSection extends BoardTimer {
+  /** midnight | arena | daylight — see src/lib/scoreboardThemes.ts */
+  scoreboard_theme?: string | null
   id: string
   name: string
   slug: string

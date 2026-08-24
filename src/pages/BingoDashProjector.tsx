@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { ParticleBackground } from '../components/ParticleBackground'
+import { getScoreboardTheme } from '../lib/scoreboardThemes'
 import { buildBingoSlots, completedBingoLines } from '../lib/bingoLines'
 import { duelBonusByTeam } from '../hooks/useBingoDuels'
 import type { BingoTask, BingoTeam, BingoScan, BingoSettings, BingoSection, BingoBoardCard, BingoDuel } from '../types/database'
@@ -176,20 +177,23 @@ export function BingoDashProjector() {
     return a.reachedAt - b.reachedAt
   })
 
+  // Per-board skin. A hotel room with windows needs 'daylight' or the
+  // projected scoreboard is unreadable; a dim AV suite wants 'midnight'.
+  const theme = getScoreboardTheme(activeSection?.scoreboard_theme)
   const rankColors = ['#fbbf24', '#cbd5e1', '#d97706']
 
   return (
-    <div className="min-h-screen bg-gray-950 relative overflow-hidden">
-      <ParticleBackground />
+    <div className={`min-h-screen relative overflow-hidden ${theme.bg}`}>
+      {theme.ambient && <ParticleBackground />}
 
       {/* Header */}
       <header className="relative z-10 px-10 pt-10 pb-6">
         <div className="max-w-[1600px] mx-auto flex items-center justify-between gap-6">
           <div>
-            <p className="text-purple-400 text-sm font-black uppercase tracking-[0.3em]">Bingo Dash</p>
-            <h1 className="text-white text-6xl font-black tracking-tight mt-1">Scoreboard</h1>
+            <p className={`text-sm font-black uppercase tracking-[0.3em] ${theme.accent}`}>Bingo Dash</p>
+            <h1 className={`text-6xl font-black tracking-tight mt-1 ${theme.heading}`}>Scoreboard</h1>
             {activeSection && (
-              <p className="text-gray-400 text-xl font-bold mt-2">{activeSection.name}</p>
+              <p className={`text-xl font-bold mt-2 ${theme.muted}`}>{activeSection.name}</p>
             )}
           </div>
           <div className="flex flex-col items-end gap-2">
@@ -308,7 +312,7 @@ export function BingoDashProjector() {
           whole room for the length of the event without competing with the
           scores above it. */}
       <footer className="pb-6 pt-2 text-center">
-        <span className="text-[10px] uppercase tracking-[0.25em] text-white/25">Powered by</span>
+        <span className={`text-[10px] uppercase tracking-[0.25em] ${theme.muted}`}>Powered by</span>
         <span className="ml-2 text-sm font-black bg-gradient-to-r from-violet-300 to-fuchsia-300 bg-clip-text text-transparent">
           Pixels and Purpose Enterprise
         </span>
