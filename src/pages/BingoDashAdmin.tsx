@@ -7,6 +7,7 @@ import { useBingoAuth } from '../hooks/useBingoAuth'
 import type { BingoTask, BingoTeam, BingoScan, BingoSettings, BingoSection, BingoCategory, BingoChallengeSection, BingoMember, BingoPhotoSubmission, BingoBoardCard, BingoDuel, BonusItem } from '../types/database'
 import { BINGO_LINES, buildBingoSlots, completedBingoLines } from '../lib/bingoLines'
 import { TileFace } from '../components/BingoTileFace'
+import { SharedLibraryPanel } from '../components/SharedLibraryPanel'
 import { CONTEST_GAMES, getContestGame } from '../lib/contestGames'
 import { duelBonusByTeam } from '../hooks/useBingoDuels'
 
@@ -2666,6 +2667,11 @@ export function BingoDashAdmin() {
               </button>
             </div>
           </div>
+
+          {/* Owner-authored content packs any tenant can copy in. Replaces the
+              old hardcoded AI Team Building import, which only the house
+              account could use. */}
+          <SharedLibraryPanel sectionId={currentSectionId} onImported={() => void fetchAll()} />
 
           {/* Compartment filter chips */}
           <div className="flex gap-2 flex-wrap mb-5">
