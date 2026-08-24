@@ -53,13 +53,26 @@ export function useBingoDuels(teamId: string | null, sectionId: string | null) {
 
   useEffect(() => { void fetchDuels() }, [fetchDuels])
 
+  // Scale note: this used to subscribe to EVERY row of bingo_duels and
+  // re-fetch on each one. At a 700-player event that is one broadcast and one
+  // query per phone per duel change. Now: two server-side filtered channels so
+  // a phone only hears about duels it is actually in, and a short debounce so a
+  // burst of updates collapses into a single fetch.
   useEffect(() => {
     if (!teamId) return
+    let timer: ReturnType<typeof setTimeout> | null = null
+    const nudge = () => {
+      if (timer) clearTimeout(timer)
+      timer = setTimeout(() => { void fetchDuels() }, 250)
+    }
     const channel = supabase
       .channel(`bingo-duels-${teamId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'bingo_duels' }, () => { void fetchDuels() })
+      .on('postgres_changes',
+          { event: '*', schema: 'public', table: 'bingo_duels', filter: `challenger_team_id=eq.${teamId}` }, nudge)
+      .on('postgres_changes',
+          { event: '*', schema: 'public', table: 'bingo_duels', filter: `defender_team_id=eq.${teamId}` }, nudge)
       .subscribe()
-    return () => { supabase.removeChannel(channel) }
+    return () => { if (timer) clearTimeout(timer); supabase.removeChannel(channel) }
   }, [teamId, fetchDuels])
 
   // Self-heal after a screen lock / backgrounded tab killed the socket.

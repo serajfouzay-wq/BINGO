@@ -72,36 +72,27 @@ export function BingoDashProjector() {
 
   // Live updates
   useEffect(() => {
+    const timers: Record<string, ReturnType<typeof setTimeout>> = {}
+    const nudge = (what: string) => {
+      if (timers[what]) clearTimeout(timers[what])
+      timers[what] = setTimeout(async () => {
+        if (what === 'scans')    { const { data } = await supabase.from('bingo_scans').select('*'); if (data) setScans(data) }
+        if (what === 'teams')    { const { data } = await supabase.from('bingo_teams').select('*').order('created_at'); if (data) setTeams(data) }
+        if (what === 'tasks')    { const { data } = await supabase.from('bingo_tasks').select('*'); if (data) setTasks(data) }
+        if (what === 'cards')    { const { data } = await supabase.from('bingo_board_cards').select('*').order('slot'); if (data) setBoardCards(data) }
+        if (what === 'settings') { const { data } = await supabase.from('bingo_settings').select('*').eq('id','main').single(); if (data) setSettings(data) }
+      }, 400)
+    }
     const channel = supabase
       .channel('bingo-projector')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'bingo_scans' }, async () => {
-        const { data } = await supabase.from('bingo_scans').select('*')
-        if (data) setScans(data)
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'bingo_teams' }, async () => {
-        const { data } = await supabase.from('bingo_teams').select('*').order('created_at')
-        if (data) setTeams(data)
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'bingo_tasks' }, async () => {
-        const { data } = await supabase.from('bingo_tasks').select('*')
-        if (data) setTasks(data)
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'bingo_board_cards' }, async () => {
-        const { data } = await supabase.from('bingo_board_cards').select('*').order('slot')
-        if (data) setBoardCards(data)
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'bingo_settings' }, async () => {
-        const { data } = await supabase.from('bingo_settings').select('*').eq('id', 'main').single()
-        if (data) setSettings(data)
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'bingo_sections' }, async () => {
-        const { data } = await supabase.from('bingo_sections').select('*').order('sort_order')
-        if (data) setSections(data)
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'bingo_duels' }, async () => {
-        const { data } = await supabase.from('bingo_duels').select('*').eq('status', 'done')
-        if (data) setDuels(data)
-      })
+      // Scale note: each handler used to select('*') the whole table on every
+      // change. Debounced so a burst of scans triggers one refresh, not one
+      // per event.
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bingo_scans' }, () => nudge('scans'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bingo_teams' }, () => nudge('teams'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bingo_tasks' }, () => nudge('tasks'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bingo_board_cards' }, () => nudge('cards'))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bingo_settings' }, () => nudge('settings'))
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [])
