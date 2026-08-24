@@ -495,3 +495,45 @@ body {
 }
 .animate-section { animation: section-in .16s ease-out both; }
 @media (prefers-reduced-motion: reduce) { .animate-section { animation: none; } }
+
+/* ── Admin palette ─────────────────────────────────────────────
+   Teal is the signature; amber means "live". Declared as CSS
+   variables so the light/dark switch is one class on <html>. */
+:root {
+  --a-bg:        #f6f8f8;
+  --a-surface:   #ffffff;
+  --a-surface-2: #eef2f2;
+  --a-border:    #dde5e5;
+  --a-text:      #0d1b1b;
+  --a-text-2:    #4a5f5f;
+  --a-text-3:    #879898;
+  --a-brand:     #0d9488;
+  --a-brand-soft:#ccfbf1;
+  --a-live:      #d97706;
+  --a-live-soft: #fef3c7;
+}
+html.admin-dark {
+  --a-bg:        #0a1414;
+  --a-surface:   #0f1c1c;
+  --a-surface-2: #152525;
+  --a-border:    #1f3535;
+  --a-text:      #eaf5f4;
+  --a-text-2:    #9ab5b3;
+  --a-text-3:    #5d7a78;
+  --a-brand:     #2dd4bf;
+  --a-brand-soft:#0f3833;
+  --a-live:      #fbbf24;
+  --a-live-soft: #3a2a08;
+}
+
+.a-bg        { background: var(--a-bg); }
+.a-surface   { background: var(--a-surface); }
+.a-surface-2 { background: var(--a-surface-2); }
+.a-border    { border-color: var(--a-border); }
+.a-text      { color: var(--a-text); }
+.a-text-2    { color: var(--a-text-2); }
+.a-text-3    { color: var(--a-text-3); }
+.a-brand     { color: var(--a-brand); }
+.a-brand-bg  { background: var(--a-brand); }
+.a-live      { color: var(--a-live); }
+.a-live-bg   { background: var(--a-live); }
