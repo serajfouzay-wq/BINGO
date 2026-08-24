@@ -271,6 +271,16 @@ export interface BingoPhotoSubmission {
 // Authenticated admin account (Supabase Auth user + approval profile).
 // owner = main holder with full access; sub = approved collaborator.
 export interface BingoAccount {
+  // Rental plan fields (007_renter_accounts.sql). Owner-set; a renter can
+  // read them on /bingo-dash/account but only set_account_plan() writes them.
+  company_name?: string | null
+  contact_name?: string | null
+  phone?: string | null
+  plan?: string | null
+  max_boards?: number | null
+  max_teams_per_board?: number | null
+  plan_expires_at?: string | null
+  owner_notes?: string | null
   id: string
   email: string | null
   role: 'owner' | 'sub'

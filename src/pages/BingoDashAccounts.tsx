@@ -101,6 +101,24 @@ export function BingoDashAccounts() {
     } finally { setBusyId(null) }
   }
 
+  // Plan + limits are owner-only and go through set_account_plan(), not a
+  // direct UPDATE: a renter must never be able to raise their own caps.
+  const savePlan = async (a: BingoAccount, patch: {
+    plan?: string; max_boards?: number; max_teams_per_board?: number
+  }) => {
+    setBusyId(a.id)
+    const { error } = await supabase.rpc('set_account_plan', {
+      p_account: a.id,
+      p_plan: patch.plan ?? a.plan ?? 'trial',
+      p_max_boards: patch.max_boards ?? a.max_boards ?? 3,
+      p_max_teams: patch.max_teams_per_board ?? a.max_teams_per_board ?? 20,
+      p_expires: a.plan_expires_at ?? null,
+    })
+    setBusyId(null)
+    if (error) alert(error.message)
+    else await load()
+  }
+
   const toggleGame = async (a: BingoAccount, field: 'can_bingo' | 'can_flag') => {
     setBusyId(a.id)
     try {
@@ -278,6 +296,34 @@ export function BingoDashAccounts() {
               Give default board
             </button>
           </div>
+        </div>
+      )}
+      {!isFac && a.role !== 'owner' && a.status === 'approved' && (
+        <div className="flex items-center flex-wrap gap-2 mt-3 pt-3 border-t border-white/10">
+          <span className="text-[11px] text-gray-500 font-bold uppercase tracking-widest mr-1">Plan:</span>
+          <select
+            defaultValue={a.plan ?? 'trial'}
+            onChange={e => void savePlan(a, { plan: e.target.value })}
+            className="px-3 py-1.5 rounded-xl bg-black/30 border-2 border-white/15 text-white text-xs focus:border-violet-500 outline-none">
+            <option value="trial">Trial</option>
+            <option value="standard">Standard</option>
+            <option value="pro">Pro</option>
+          </select>
+          <label className="flex items-center gap-1 text-[11px] text-gray-400 font-bold">
+            Boards
+            <input type="number" min={1} defaultValue={a.max_boards ?? 3}
+              onBlur={e => void savePlan(a, { max_boards: Number(e.target.value) })}
+              className="w-16 px-2 py-1.5 rounded-xl bg-black/30 border-2 border-white/15 text-white text-xs focus:border-violet-500 outline-none" />
+          </label>
+          <label className="flex items-center gap-1 text-[11px] text-gray-400 font-bold">
+            Teams / board
+            <input type="number" min={1} defaultValue={a.max_teams_per_board ?? 20}
+              onBlur={e => void savePlan(a, { max_teams_per_board: Number(e.target.value) })}
+              className="w-16 px-2 py-1.5 rounded-xl bg-black/30 border-2 border-white/15 text-white text-xs focus:border-violet-500 outline-none" />
+          </label>
+          {a.company_name && (
+            <span className="text-[11px] text-gray-500 ml-auto">{a.company_name}</span>
+          )}
         </div>
       )}
       {!isFac && a.role !== 'owner' && facForId === a.id && (
