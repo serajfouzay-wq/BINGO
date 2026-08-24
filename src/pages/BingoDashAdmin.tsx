@@ -10,6 +10,7 @@ import { TileFace } from '../components/BingoTileFace'
 import { SharedLibraryPanel } from '../components/SharedLibraryPanel'
 import { SCOREBOARD_THEMES, getScoreboardTheme } from '../lib/scoreboardThemes'
 import { Menu, MenuItem, MenuDivider } from '../components/AdminHeader'
+import { AdminSection } from '../components/AdminSection'
 import { CONTEST_GAMES, getContestGame } from '../lib/contestGames'
 import { duelBonusByTeam } from '../hooks/useBingoDuels'
 
@@ -2316,12 +2317,12 @@ export function BingoDashAdmin() {
         </section>
 
         {/* ── Scoreboard Theme ──────────────────────────────────────────────── */}
-        <section className="mb-8">
-          <h2 className="text-xl font-bold text-white mb-2">Scoreboard Theme</h2>
-          <p className="text-xs text-gray-500 mb-3">
-            How the projector looks for this board. This is a legibility choice as much as a visual
-            one — a dark scoreboard is unreadable in a function room with windows.
-          </p>
+        <AdminSection icon="🎨" title="Scoreboard Theme"
+          blurb="How the projector looks for this board — a legibility choice as much as a visual one."
+          summary={<>{getScoreboardTheme(currentBoard?.scoreboard_theme).name}</>}>
+
+          
+          
           {(() => {
             const current = getScoreboardTheme(currentBoard?.scoreboard_theme).key
             return (
@@ -2345,12 +2346,16 @@ export function BingoDashAdmin() {
               </div>
             )
           })()}
-        </section>
+        
+        </AdminSection>
 
         {/* ── Marshal Password ──────────────────────────────────────────────── */}
-        <section>
-          <h2 className="text-xl font-bold text-white mb-2">Marshal Password</h2>
-          <p className="text-xs text-gray-500 mb-3">Participants on this board must enter this password to complete challenges that have "Require Marshal" enabled.</p>
+        <AdminSection icon="🔒" title="Marshal Password"
+          blurb="Participants must enter this to complete challenges that require a marshal."
+          summary={<>{'•'.repeat((currentBoard?.marshal_password ?? '').length || 4)}</>}>
+
+          
+          
           <div className="flex gap-2 items-center">
             <input
               type="text"
@@ -2394,15 +2399,16 @@ export function BingoDashAdmin() {
               />
             </button>
           </div>
-        </section>
+        
+        </AdminSection>
 
         {/* ── Board Note (shown below the bingo board on the player page) ──── */}
-        <section>
-          <h2 className="text-xl font-bold text-white mb-2">Board Note</h2>
-          <p className="text-xs text-gray-500 mb-3">
-            Shown in a box below the bingo board on the player page for this board — e.g. a reminder to
-            collect an item for the Bonsai Project. Leave the note empty to hide the box.
-          </p>
+        <AdminSection icon="📌" title="Board Note"
+          blurb="Shown under the bingo board on the player page — leave empty to hide it."
+          summary={<>{currentBoard?.board_note ? 'Set' : 'Off'}</>}>
+
+          
+          
           {(() => {
             const sec = sections.find(s => s.id === currentSectionId)
             if (!sec) return null
@@ -2441,17 +2447,16 @@ export function BingoDashAdmin() {
               </div>
             )
           })()}
-        </section>
+        
+        </AdminSection>
 
         {/* ── Tile Display (icon vs words on the player board) ───────────────── */}
-        <section>
-          <h2 className="text-xl font-bold text-white mb-2">Tile Display</h2>
-          <p className="text-xs text-gray-500 mb-3">
-            How the 25 tiles look on players' phones for this board. A tile is only about 70px wide,
-            so a full challenge title has to shrink to be unreadable — pick <b>Icons</b> for the cleanest
-            board, or <b>Words</b> to show the category with a shortened title. Players always see the
-            full title when they tap a tile.
-          </p>
+        <AdminSection icon="🔡" title="Tile Display"
+          blurb="Whether grid tiles show a category icon or the challenge name."
+          summary={<>{currentBoard?.tile_display === 'words' ? 'Words' : 'Icons'}</>}>
+
+          
+          
           {(() => {
             const mode = currentBoard?.tile_display === 'words' ? 'words' : 'icon'
             const sampleTasks = (gridTasks.length > 0 ? gridTasks : scopedTasks).slice(0, 3)
@@ -2501,7 +2506,8 @@ export function BingoDashAdmin() {
               </div>
             )
           })()}
-        </section>
+        
+        </AdminSection>
 
         {/* ── Board Editor ──────────────────────────────────────────────────── */}
         <section>
