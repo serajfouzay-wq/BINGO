@@ -303,6 +303,16 @@ export function BingoDashProjector() {
           )}
         </div>
       </main>
+
+      {/* Sits under the scoreboard on the projected screen — visible to the
+          whole room for the length of the event without competing with the
+          scores above it. */}
+      <footer className="pb-6 pt-2 text-center">
+        <span className="text-[10px] uppercase tracking-[0.25em] text-white/25">Powered by</span>
+        <span className="ml-2 text-sm font-black bg-gradient-to-r from-violet-300 to-fuchsia-300 bg-clip-text text-transparent">
+          Pixels and Purpose Enterprise
+        </span>
+      </footer>
     </div>
   )
 }

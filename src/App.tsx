@@ -7,6 +7,7 @@ const InstructionsSlide     = lazy(() => import('./pages/InstructionsSlide').the
 const InstructionsHub       = lazy(() => import('./pages/InstructionsHub').then(m => ({ default: m.InstructionsHub })))
 const EventSlide            = lazy(() => import('./pages/EventSlide').then(m => ({ default: m.EventSlide })))
 const GroupingSlide         = lazy(() => import('./pages/GroupingSlide').then(m => ({ default: m.GroupingSlide })))
+const BingoDashHub          = lazy(() => import('./pages/BingoDashHub').then(m => ({ default: m.BingoDashHub })))
 const BingoDashHome         = lazy(() => import('./pages/BingoDashHome').then(m => ({ default: m.BingoDashHome })))
 const BingoDashParticipant  = lazy(() => import('./pages/BingoDashParticipant').then(m => ({ default: m.BingoDashParticipant })))
 const BingoDashAdmin        = lazy(() => import('./pages/BingoDashAdmin').then(m => ({ default: m.BingoDashAdmin })))
@@ -32,7 +33,7 @@ export default function App() {
     <BrowserRouter>
       <Suspense fallback={null}>
         <Routes>
-          <Route path="/" element={<Navigate to="/bingo-dash" replace />} />
+          <Route path="/" element={<BingoDashHub />} />
           <Route path="/instructions" element={<InstructionsHub />} />
           <Route path="/instructions/:deckId" element={<InstructionsSlide />} />
           <Route path="/event" element={<EventSlide />} />
