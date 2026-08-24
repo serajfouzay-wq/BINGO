@@ -7,6 +7,7 @@ import { ParticleBackground } from '../components/ParticleBackground'
 import { TimeUpAlarm } from '../components/TimeUpAlarm'
 import { TileFace } from '../components/BingoTileFace'
 import { IncomingDuelBanner } from '../components/ContestCard'
+import { LeaderApprovalQueue } from '../components/LeaderApprovalQueue'
 import { normalizeTileDisplay, type TileDisplay } from '../lib/bingoTileDisplay'
 import type { BingoTask, BingoScan, BingoSection, BingoTeam, BoardTimer } from '../types/database'
 
@@ -814,6 +815,7 @@ export function BingoDashHome() {
       {/* Another team can challenge us at any moment — the banner has to reach
           players wherever they are on the board, not only inside a card. */}
       {team && sectionId && <IncomingDuelBanner team={team} sectionId={sectionId} />}
+      <LeaderApprovalQueue teamId={team?.id ?? null} />
       <TimeUpAlarm settings={section} />
     </>
   )
