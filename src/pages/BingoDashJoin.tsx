@@ -38,6 +38,7 @@ const PLAYER_NAME_KEY = 'bingo-player-name'
 const GLOBAL_TEAM_ID_KEY = 'bingo-dash-team-id'
 const GLOBAL_TEAM_DATA_KEY = 'bingo-dash-team-data'
 const GLOBAL_MEMBER_ROLE_KEY = 'bingo-dash-member-role'
+const GLOBAL_MEMBER_ID_KEY = 'bingo-dash-member-id'
 
 type TileStatus = 'locked' | 'scanned' | 'completed'
 
@@ -994,6 +995,7 @@ export function BingoDashJoin() {
 
     const liveTeamJson = JSON.stringify(liveTeam)
     localStorage.setItem(MEMBER_ID_KEY(sectionSlug), member.id)
+    localStorage.setItem(GLOBAL_MEMBER_ID_KEY, member.id)
     localStorage.setItem(MEMBER_DATA_KEY(sectionSlug), JSON.stringify(member))
     localStorage.setItem(TEAM_ID_KEY(sectionSlug), liveTeam.id)
     localStorage.setItem(TEAM_DATA_KEY(sectionSlug), liveTeamJson)

@@ -76,7 +76,7 @@ export function BingoDashProjector() {
     const nudge = (what: string) => {
       if (timers[what]) clearTimeout(timers[what])
       timers[what] = setTimeout(async () => {
-        if (what === 'scans')    { const { data } = await supabase.from('bingo_scans').select('*'); if (data) setScans(data) }
+        if (what === 'scans')    { const { data } = await supabase.from('bingo_scans').select('*'); if (data) setScans(data) }  // team-scoped filtering happens below at render
         if (what === 'teams')    { const { data } = await supabase.from('bingo_teams').select('*').order('created_at'); if (data) setTeams(data) }
         if (what === 'tasks')    { const { data } = await supabase.from('bingo_tasks').select('*'); if (data) setTasks(data) }
         if (what === 'cards')    { const { data } = await supabase.from('bingo_board_cards').select('*').order('slot'); if (data) setBoardCards(data) }

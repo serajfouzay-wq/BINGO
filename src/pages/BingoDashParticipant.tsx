@@ -72,7 +72,10 @@ export function BingoDashParticipant() {
   const { pages, loading: pagesLoading } = useBingoTaskPages(taskId)
   const { photos, loading: photosLoading } = useBingoTaskPhotos(taskId)
   const { links } = useTaskLinks(taskId, 'bingo_task_links')
-  const { recordScan, toggleComplete } = useBingoScans()
+  const { recordScan, toggleComplete, submitTile } = useBingoScans()
+  const memberId = localStorage.getItem('bingo-dash-member-id')
+  const isLeader = localStorage.getItem('bingo-dash-member-role') === 'leader'
+  const [submittedForApproval, setSubmittedForApproval] = useState(false)
 
   const [task, setTask] = useState<BingoTask | null>(null)
   const [showSplash, setShowSplash] = useState(!isSnakeLadder)
@@ -639,6 +642,15 @@ export function BingoDashParticipant() {
                       </div>
                     </>
                   )}
+                  {submittedForApproval && (
+                    <div className="mb-3 p-4 rounded-2xl bg-amber-400/15 border-2 border-amber-400/50 text-center">
+                      <div className="text-3xl mb-1">📤</div>
+                      <p className="text-amber-200 font-black">Sent to your team leader</p>
+                      <p className="text-amber-200/70 text-xs mt-1">
+                        They approve it and the points land on the scoreboard.
+                      </p>
+                    </div>
+                  )}
                   <button
                     onClick={async () => {
                       if (!scanRecord) return
@@ -648,18 +660,27 @@ export function BingoDashParticipant() {
                       }
                       setCompleting(true)
                       try {
-                        await toggleComplete(scanRecord.id, true)
-                        setScanRecord({ ...scanRecord, completed: true })
+                        // Leaders complete outright; everyone else submits and
+                        // waits. This is what keeps four phones from sending the
+                        // same completion to one marshal.
+                        if (isLeader) {
+                          await toggleComplete(scanRecord.id, true)
+                          setScanRecord({ ...scanRecord, completed: true })
+                        } else if (team && memberId) {
+                          const r = await submitTile(team.id, taskId!, memberId)
+                          if (r.error) { setMarshalError(r.error); return }
+                          setSubmittedForApproval(true)
+                        }
                       } finally { setCompleting(false) }
                     }}
-                    disabled={completing || !scanRecord}
+                    disabled={completing || !scanRecord || submittedForApproval}
                     className="w-full py-4 rounded-2xl text-white text-xl font-black uppercase tracking-wider transition-all active:scale-95 disabled:opacity-50"
                     style={{
                       backgroundColor: task.hex_code,
                       boxShadow: `0 6px 0 ${task.hex_code}88, 0 8px 20px ${task.hex_code}44`,
                     }}
                   >
-                    {completing ? 'Completing...' : 'Complete Challenge ✅'}
+                    {completing ? 'Sending...' : isLeader ? 'Complete Challenge ✅' : 'Submit to Team Leader 📤'}
                   </button>
                 </>
               )}
