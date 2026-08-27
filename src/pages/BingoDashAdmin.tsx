@@ -12,6 +12,7 @@ import { SCOREBOARD_THEMES, getScoreboardTheme } from '../lib/scoreboardThemes'
 import { Menu, MenuItem, MenuDivider } from '../components/AdminHeader'
 import { AdminSection } from '../components/AdminSection'
 import { AdminSidebar, type AdminView } from '../components/AdminSidebar'
+import { RunEventPanel, Step } from '../components/RunEventPanel'
 import { CONTEST_GAMES, getContestGame } from '../lib/contestGames'
 import { duelBonusByTeam } from '../hooks/useBingoDuels'
 
@@ -2302,197 +2303,7 @@ export function BingoDashAdmin() {
         </section>
 
         {/* ── Scoreboard Theme ──────────────────────────────────────────────── */}
-        <AdminSection icon="🎨" title="Scoreboard Theme"
-          blurb="How the projector looks for this board — a legibility choice as much as a visual one."
-          summary={<>{getScoreboardTheme(currentBoard?.scoreboard_theme).name}</>}>
-
-          
-          
-          {(() => {
-            const current = getScoreboardTheme(currentBoard?.scoreboard_theme).key
-            return (
-              <div className="grid sm:grid-cols-3 gap-2">
-                {SCOREBOARD_THEMES.map(t => (
-                  <button
-                    key={t.key}
-                    onClick={() => { if (current !== t.key) updateBoardSettings({ scoreboard_theme: t.key }) }}
-                    className={`p-4 rounded-lg text-left border transition-colors ${
-                      current === t.key
-                        ? 'bg-violet-500 border-violet-400 text-white'
-                        : 'bg-gray-950 border-white/15 text-gray-300 hover:border-violet-500'
-                    }`}
-                  >
-                    <p className="text-sm font-bold">{t.name}</p>
-                    <p className={`text-[11px] mt-0.5 leading-snug ${current === t.key ? 'text-white/75' : 'text-gray-500'}`}>
-                      {t.hint}
-                    </p>
-                  </button>
-                ))}
-              </div>
-            )
-          })()}
         
-        </AdminSection>
-
-        {/* ── Marshal Password ──────────────────────────────────────────────── */}
-        <AdminSection icon="🔒" title="Marshal Password"
-          blurb="Participants must enter this to complete challenges that require a marshal."
-          summary={<>{'•'.repeat((currentBoard?.marshal_password ?? '').length || 4)}</>}>
-
-          
-          
-          <div className="flex gap-2 items-center">
-            <input
-              type="text"
-              value={currentBoard?.marshal_password ?? ''}
-              onChange={e => setSections(prev => prev.map(s => s.id === currentSectionId ? { ...s, marshal_password: e.target.value } : s))}
-              placeholder="Marshal password..."
-              className="flex-1 px-4 py-2.5 rounded-lg border border-white/15 bg-gray-900 text-white placeholder-gray-600 text-sm font-mono font-bold focus:outline-none focus:border-violet-500"
-            />
-            <button
-              onClick={() => {
-                if (!currentBoard) return
-                updateBoardSettings({ marshal_password: currentBoard.marshal_password })
-              }}
-              className="px-5 py-2.5 rounded-lg text-sm font-bold text-white bg-violet-500 hover:bg-violet-600 transition-colors"
-            >
-              Save
-            </button>
-          </div>
-
-          {/* Photo submissions global toggle */}
-          <div className="mt-5 flex items-center justify-between gap-4 p-4 rounded-lg border border-white/10 bg-gray-900/50">
-            <div>
-              <p className="text-sm font-bold text-white">Photo submissions</p>
-              <p className="text-xs text-gray-500 mt-0.5">When ON, every task tile shows a photo upload — primary on photo-type cards, optional/evidence on marshal & answer cards. Turn OFF during marshal-led rounds where photos are not collected.</p>
-            </div>
-            <button
-              onClick={() => {
-                if (!currentBoard) return
-                updateBoardSettings({ photo_submissions_enabled: !currentBoard.photo_submissions_enabled })
-              }}
-              role="switch"
-              aria-checked={currentBoard?.photo_submissions_enabled ?? true}
-              className={`relative shrink-0 w-14 h-8 rounded-full transition-colors ${
-                currentBoard?.photo_submissions_enabled ?? true ? 'bg-violet-500' : 'bg-gray-600'
-              }`}
-            >
-              <span
-                className={`absolute top-1 left-1 w-6 h-6 rounded-full bg-white shadow transition-transform ${
-                  currentBoard?.photo_submissions_enabled ?? true ? 'translate-x-6' : 'translate-x-0'
-                }`}
-              />
-            </button>
-          </div>
-        
-        </AdminSection>
-
-        {/* ── Board Note (shown below the bingo board on the player page) ──── */}
-        <AdminSection icon="📌" title="Board Note"
-          blurb="Shown under the bingo board on the player page — leave empty to hide it."
-          summary={<>{currentBoard?.board_note ? 'Set' : 'Off'}</>}>
-
-          
-          
-          {(() => {
-            const sec = sections.find(s => s.id === currentSectionId)
-            if (!sec) return null
-            return (
-              <div className="p-4 rounded-lg border border-white/10 bg-gray-900/50">
-                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Note</label>
-                <textarea
-                  value={sec.board_note ?? ''}
-                  onChange={e => setSections(prev => prev.map(s => s.id === sec.id ? { ...s, board_note: e.target.value } : s))}
-                  placeholder="e.g. 🌱 Collect one item for the Bonsai Project after every 2 completed boxes!"
-                  rows={3}
-                  className="w-full px-4 py-2.5 rounded-lg border border-white/15 bg-gray-950 text-white placeholder-gray-600 text-sm font-medium focus:outline-none focus:border-violet-500 resize-none"
-                />
-                <div className="mt-3 flex items-end justify-between gap-4 flex-wrap">
-                  <div>
-                    <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Item counter</label>
-                    <div className="flex items-center gap-2 text-sm text-gray-400">
-                      <span>Collect 1 item per</span>
-                      <input
-                        type="number" min={0}
-                        value={sec.board_note_every ?? 2}
-                        onChange={e => setSections(prev => prev.map(s => s.id === sec.id ? { ...s, board_note_every: Math.max(0, parseInt(e.target.value) || 0) } : s))}
-                        className="w-16 px-2 py-1.5 rounded-lg border border-white/15 bg-gray-950 text-white text-center font-bold focus:outline-none focus:border-violet-500"
-                      />
-                      <span>completed boxes</span>
-                    </div>
-                    <p className="text-[11px] text-gray-600 mt-1">Players see a live tally of items to collect. Set to 0 to hide the counter.</p>
-                  </div>
-                  <button
-                    onClick={saveBoardNote}
-                    className="px-5 py-2 rounded-lg text-sm font-bold text-white bg-violet-500 hover:bg-violet-600 transition-colors"
-                  >
-                    Save note
-                  </button>
-                </div>
-              </div>
-            )
-          })()}
-        
-        </AdminSection>
-
-        {/* ── Tile Display (icon vs words on the player board) ───────────────── */}
-        <AdminSection icon="🔡" title="Tile Display"
-          blurb="Whether grid tiles show a category icon or the challenge name."
-          summary={<>{currentBoard?.tile_display === 'words' ? 'Words' : 'Icons'}</>}>
-
-          
-          
-          {(() => {
-            const mode = currentBoard?.tile_display === 'words' ? 'words' : 'icon'
-            const sampleTasks = (gridTasks.length > 0 ? gridTasks : scopedTasks).slice(0, 3)
-            const options = [
-              { value: 'icon' as const, label: 'Icons', hint: 'One big category icon per tile' },
-              { value: 'words' as const, label: 'Words', hint: 'CATEGORY + shortened title' },
-            ]
-            return (
-              <div className="p-4 rounded-lg border border-white/10 bg-gray-900/50 flex flex-col sm:flex-row sm:items-center gap-5">
-                <div className="flex gap-2">
-                  {options.map(opt => (
-                    <button
-                      key={opt.value}
-                      onClick={() => { if (mode !== opt.value) updateBoardSettings({ tile_display: opt.value }) }}
-                      disabled={timerSaving}
-                      className={`px-4 py-3 rounded-lg text-left border transition-colors disabled:opacity-40 ${
-                        mode === opt.value
-                          ? 'bg-violet-500 border-violet-400 text-white'
-                          : 'bg-gray-950 border-white/15 text-gray-300 hover:border-violet-500'
-                      }`}
-                    >
-                      <p className="text-sm font-bold">{opt.label}</p>
-                      <p className={`text-[11px] mt-0.5 ${mode === opt.value ? 'text-white/75' : 'text-gray-500'}`}>
-                        {opt.hint}
-                      </p>
-                    </button>
-                  ))}
-                </div>
-
-                {/* Live preview — the same tile face players see */}
-                {sampleTasks.length > 0 && (
-                  <div className="flex items-center gap-3">
-                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Preview</span>
-                    <div className="flex gap-1.5">
-                      {sampleTasks.map(t => (
-                        <div
-                          key={t.id}
-                          className="relative w-[70px] h-[70px] rounded-xl overflow-hidden flex items-center justify-center"
-                          style={{ backgroundColor: t.hex_code, boxShadow: `0 3px 10px ${t.hex_code}55` }}
-                        >
-                          <TileFace task={t} display={mode} />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )
-          })()}
-        
-        </AdminSection>
 
         {/* ── Board Editor ──────────────────────────────────────────────────── */}
         <section>
@@ -3116,6 +2927,285 @@ export function BingoDashAdmin() {
         )}
 
         {/* ── Challenges gallery (Board tab, scoped to current section) ──────── */}
+        {/* The landing screen. A trainer following 1 → 5 top to bottom runs a
+            correct event without being told how — which is the whole point,
+            since the people renting this are not developers. */}
+        {activeTab === 'run' && (() => {
+          const placed = boardCards.filter(bc => bc.section_id === currentSectionId).length
+          const teamCount = scopedTeams.length
+          const live = !!currentBoard?.game_started
+          const btn = 'px-4 py-2 rounded-xl text-sm font-black transition-all active:scale-95'
+          return (
+            <RunEventPanel>
+              <Step n={1} done={!!currentBoard}
+                title="Pick the board for this event"
+                blurb="Each board is one event: its own cards, teams and scoreboard."
+                action={
+                  <span className="px-3 py-1.5 rounded-lg text-sm font-bold"
+                        style={{ background: 'var(--a-brand-soft)', color: 'var(--a-brand)' }}>
+                    {currentBoard?.name ?? 'None selected'}
+                  </span>
+                } />
+
+              <Step n={2} done={teamCount > 0}
+                title="Add your teams"
+                blurb="Participants join a team with its name and password."
+                warn={teamCount === 0 ? 'No teams yet — players cannot join' : undefined}
+                action={
+                  <button onClick={() => setActiveTab('teams')}
+                    className={btn} style={{ background: 'var(--a-surface-2)', color: 'var(--a-text)' }}>
+                    {teamCount > 0 ? `${teamCount} teams` : 'Add teams'}
+                  </button>
+                } />
+
+              <Step n={3} done={placed > 0}
+                title="Place cards on the grid"
+                blurb="Drag challenges from your library onto the 5×5 board."
+                warn={placed === 0 ? 'The board is empty' : undefined}
+                action={
+                  <button onClick={() => setActiveTab('board')}
+                    className={btn} style={{ background: 'var(--a-surface-2)', color: 'var(--a-text)' }}>
+                    {placed} / 25 placed
+                  </button>
+                } />
+
+              <Step n={4} done={teamCount > 0 && placed > 0}
+                title="Share the join link"
+                blurb="Show the QR on the projector, or send the link to the group."
+                action={
+                  <button
+                    onClick={() => { setShowJoinLink(true); setJoinLinkCopied(false); setJoinLinkTab('player') }}
+                    className={`${btn} text-white`} style={{ background: 'var(--a-brand)' }}>
+                    📱 Show QR
+                  </button>
+                } />
+
+              <Step n={5} done={live}
+                title={live ? 'Your event is running' : 'Start the game'}
+                blurb={live
+                  ? 'Players can open cards and score. Open the scoreboard for the room.'
+                  : 'Until you start, players see a waiting screen.'}
+                action={
+                  <div className="flex gap-2">
+                    <a href={currentBoard ? `/bingo-dash/projector/${currentBoard.slug}` : '/bingo-dash/projector'}
+                       target="_blank" rel="noreferrer"
+                       className={btn} style={{ background: 'var(--a-surface-2)', color: 'var(--a-text)' }}>
+                      📺 Scoreboard
+                    </a>
+                    <button
+                      onClick={() => updateBoardSettings({ game_started: !live })}
+                      className={`${btn} text-white`}
+                      style={{ background: live ? '#b91c1c' : 'var(--a-live)' }}>
+                      {live ? '■ Stop game' : '▶ Start game'}
+                    </button>
+                  </div>
+                } />
+            </RunEventPanel>
+          )
+        })()}
+
+        {/* Board options. Set once per event, so they live away from the
+            editor rather than stacked above it. */}
+        {activeTab === 'settings' && (
+          <div className="max-w-3xl space-y-3">
+            <div className="mb-6">
+              <h1 className="text-3xl font-black a-text tracking-tight">Board settings</h1>
+              <p className="a-text-2 mt-1.5 text-sm">Options for <strong>{currentBoard?.name}</strong>. Each row shows its current value.</p>
+            </div>
+            <AdminSection icon="🎨" title="Scoreboard Theme"
+          blurb="How the projector looks for this board — a legibility choice as much as a visual one."
+          summary={<>{getScoreboardTheme(currentBoard?.scoreboard_theme).name}</>}>
+
+          
+          
+          {(() => {
+            const current = getScoreboardTheme(currentBoard?.scoreboard_theme).key
+            return (
+              <div className="grid sm:grid-cols-3 gap-2">
+                {SCOREBOARD_THEMES.map(t => (
+                  <button
+                    key={t.key}
+                    onClick={() => { if (current !== t.key) updateBoardSettings({ scoreboard_theme: t.key }) }}
+                    className={`p-4 rounded-lg text-left border transition-colors ${
+                      current === t.key
+                        ? 'bg-violet-500 border-violet-400 text-white'
+                        : 'bg-gray-950 border-white/15 text-gray-300 hover:border-violet-500'
+                    }`}
+                  >
+                    <p className="text-sm font-bold">{t.name}</p>
+                    <p className={`text-[11px] mt-0.5 leading-snug ${current === t.key ? 'text-white/75' : 'text-gray-500'}`}>
+                      {t.hint}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )
+          })()}
+        
+        </AdminSection>
+
+        {/* ── Marshal Password ──────────────────────────────────────────────── */}
+        <AdminSection icon="🔒" title="Marshal Password"
+          blurb="Participants must enter this to complete challenges that require a marshal."
+          summary={<>{'•'.repeat((currentBoard?.marshal_password ?? '').length || 4)}</>}>
+
+          
+          
+          <div className="flex gap-2 items-center">
+            <input
+              type="text"
+              value={currentBoard?.marshal_password ?? ''}
+              onChange={e => setSections(prev => prev.map(s => s.id === currentSectionId ? { ...s, marshal_password: e.target.value } : s))}
+              placeholder="Marshal password..."
+              className="flex-1 px-4 py-2.5 rounded-lg border border-white/15 bg-gray-900 text-white placeholder-gray-600 text-sm font-mono font-bold focus:outline-none focus:border-violet-500"
+            />
+            <button
+              onClick={() => {
+                if (!currentBoard) return
+                updateBoardSettings({ marshal_password: currentBoard.marshal_password })
+              }}
+              className="px-5 py-2.5 rounded-lg text-sm font-bold text-white bg-violet-500 hover:bg-violet-600 transition-colors"
+            >
+              Save
+            </button>
+          </div>
+
+          {/* Photo submissions global toggle */}
+          <div className="mt-5 flex items-center justify-between gap-4 p-4 rounded-lg border border-white/10 bg-gray-900/50">
+            <div>
+              <p className="text-sm font-bold text-white">Photo submissions</p>
+              <p className="text-xs text-gray-500 mt-0.5">When ON, every task tile shows a photo upload — primary on photo-type cards, optional/evidence on marshal & answer cards. Turn OFF during marshal-led rounds where photos are not collected.</p>
+            </div>
+            <button
+              onClick={() => {
+                if (!currentBoard) return
+                updateBoardSettings({ photo_submissions_enabled: !currentBoard.photo_submissions_enabled })
+              }}
+              role="switch"
+              aria-checked={currentBoard?.photo_submissions_enabled ?? true}
+              className={`relative shrink-0 w-14 h-8 rounded-full transition-colors ${
+                currentBoard?.photo_submissions_enabled ?? true ? 'bg-violet-500' : 'bg-gray-600'
+              }`}
+            >
+              <span
+                className={`absolute top-1 left-1 w-6 h-6 rounded-full bg-white shadow transition-transform ${
+                  currentBoard?.photo_submissions_enabled ?? true ? 'translate-x-6' : 'translate-x-0'
+                }`}
+              />
+            </button>
+          </div>
+        
+        </AdminSection>
+
+        {/* ── Board Note (shown below the bingo board on the player page) ──── */}
+        <AdminSection icon="📌" title="Board Note"
+          blurb="Shown under the bingo board on the player page — leave empty to hide it."
+          summary={<>{currentBoard?.board_note ? 'Set' : 'Off'}</>}>
+
+          
+          
+          {(() => {
+            const sec = sections.find(s => s.id === currentSectionId)
+            if (!sec) return null
+            return (
+              <div className="p-4 rounded-lg border border-white/10 bg-gray-900/50">
+                <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Note</label>
+                <textarea
+                  value={sec.board_note ?? ''}
+                  onChange={e => setSections(prev => prev.map(s => s.id === sec.id ? { ...s, board_note: e.target.value } : s))}
+                  placeholder="e.g. 🌱 Collect one item for the Bonsai Project after every 2 completed boxes!"
+                  rows={3}
+                  className="w-full px-4 py-2.5 rounded-lg border border-white/15 bg-gray-950 text-white placeholder-gray-600 text-sm font-medium focus:outline-none focus:border-violet-500 resize-none"
+                />
+                <div className="mt-3 flex items-end justify-between gap-4 flex-wrap">
+                  <div>
+                    <label className="block text-xs font-bold text-gray-400 uppercase tracking-wider mb-1">Item counter</label>
+                    <div className="flex items-center gap-2 text-sm text-gray-400">
+                      <span>Collect 1 item per</span>
+                      <input
+                        type="number" min={0}
+                        value={sec.board_note_every ?? 2}
+                        onChange={e => setSections(prev => prev.map(s => s.id === sec.id ? { ...s, board_note_every: Math.max(0, parseInt(e.target.value) || 0) } : s))}
+                        className="w-16 px-2 py-1.5 rounded-lg border border-white/15 bg-gray-950 text-white text-center font-bold focus:outline-none focus:border-violet-500"
+                      />
+                      <span>completed boxes</span>
+                    </div>
+                    <p className="text-[11px] text-gray-600 mt-1">Players see a live tally of items to collect. Set to 0 to hide the counter.</p>
+                  </div>
+                  <button
+                    onClick={saveBoardNote}
+                    className="px-5 py-2 rounded-lg text-sm font-bold text-white bg-violet-500 hover:bg-violet-600 transition-colors"
+                  >
+                    Save note
+                  </button>
+                </div>
+              </div>
+            )
+          })()}
+        
+        </AdminSection>
+
+        {/* ── Tile Display (icon vs words on the player board) ───────────────── */}
+        <AdminSection icon="🔡" title="Tile Display"
+          blurb="Whether grid tiles show a category icon or the challenge name."
+          summary={<>{currentBoard?.tile_display === 'words' ? 'Words' : 'Icons'}</>}>
+
+          
+          
+          {(() => {
+            const mode = currentBoard?.tile_display === 'words' ? 'words' : 'icon'
+            const sampleTasks = (gridTasks.length > 0 ? gridTasks : scopedTasks).slice(0, 3)
+            const options = [
+              { value: 'icon' as const, label: 'Icons', hint: 'One big category icon per tile' },
+              { value: 'words' as const, label: 'Words', hint: 'CATEGORY + shortened title' },
+            ]
+            return (
+              <div className="p-4 rounded-lg border border-white/10 bg-gray-900/50 flex flex-col sm:flex-row sm:items-center gap-5">
+                <div className="flex gap-2">
+                  {options.map(opt => (
+                    <button
+                      key={opt.value}
+                      onClick={() => { if (mode !== opt.value) updateBoardSettings({ tile_display: opt.value }) }}
+                      disabled={timerSaving}
+                      className={`px-4 py-3 rounded-lg text-left border transition-colors disabled:opacity-40 ${
+                        mode === opt.value
+                          ? 'bg-violet-500 border-violet-400 text-white'
+                          : 'bg-gray-950 border-white/15 text-gray-300 hover:border-violet-500'
+                      }`}
+                    >
+                      <p className="text-sm font-bold">{opt.label}</p>
+                      <p className={`text-[11px] mt-0.5 ${mode === opt.value ? 'text-white/75' : 'text-gray-500'}`}>
+                        {opt.hint}
+                      </p>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Live preview — the same tile face players see */}
+                {sampleTasks.length > 0 && (
+                  <div className="flex items-center gap-3">
+                    <span className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Preview</span>
+                    <div className="flex gap-1.5">
+                      {sampleTasks.map(t => (
+                        <div
+                          key={t.id}
+                          className="relative w-[70px] h-[70px] rounded-xl overflow-hidden flex items-center justify-center"
+                          style={{ backgroundColor: t.hex_code, boxShadow: `0 3px 10px ${t.hex_code}55` }}
+                        >
+                          <TileFace task={t} display={mode} />
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )
+          })()}
+        
+        </AdminSection>
+          </div>
+        )}
+
         {activeTab === 'board' && <section>
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-bold text-white">Challenges</h2>
