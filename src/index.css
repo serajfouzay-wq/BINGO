@@ -537,3 +537,20 @@ html.admin-dark {
 .a-brand-bg  { background: var(--a-brand); }
 .a-live      { color: var(--a-live); }
 .a-live-bg   { background: var(--a-live); }
+
+/* ── Scoreboard theme safelist ─────────────────────────────────
+   Theme classes are built as strings in src/lib/scoreboardThemes.ts, so
+   Tailwind's scanner never sees them and purges the rules. Naming them here
+   keeps them in the build. This is why picking Arena changed the database
+   but not the projector. */
+@source inline("bg-gray-950 bg-black bg-slate-100");
+@source inline("text-white text-slate-900");
+@source inline("border-white/10 border-white/25 border-slate-300");
+@source inline("bg-white/[0.04] bg-white/[0.07] bg-white");
+@source inline("border-violet-400/50 border-amber-400 border-violet-500");
+@source inline("bg-violet-500/15 bg-amber-400/20 bg-violet-50");
+@source inline("text-white/80 text-white/55 text-white/40 text-slate-700 text-slate-500");
+@source inline("text-violet-300 text-amber-300 text-violet-700");
+@source inline("text-fuchsia-300 text-amber-200 text-fuchsia-700");
+@source inline("text-emerald-400 text-lime-400 text-emerald-600");
+@source inline("bg-violet-600/20");
