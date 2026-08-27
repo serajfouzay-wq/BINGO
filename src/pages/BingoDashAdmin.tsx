@@ -11,6 +11,7 @@ import { SharedLibraryPanel } from '../components/SharedLibraryPanel'
 import { SCOREBOARD_THEMES, getScoreboardTheme } from '../lib/scoreboardThemes'
 import { Menu, MenuItem, MenuDivider } from '../components/AdminHeader'
 import { AdminSection } from '../components/AdminSection'
+import { AdminSidebar, type AdminView } from '../components/AdminSidebar'
 import { CONTEST_GAMES, getContestGame } from '../lib/contestGames'
 import { duelBonusByTeam } from '../hooks/useBingoDuels'
 
@@ -575,7 +576,9 @@ export function BingoDashAdmin() {
   const [slotPickerFilter, setSlotPickerFilter] = useState('all')
 
   // Tab navigation
-  const [activeTab, setActiveTab] = useState<'board' | 'library' | 'teams' | 'submissions'>('board')
+  // Sidebar views. 'run' is the guided landing screen; 'settings' collects the
+  // board options that used to sit stacked under the board editor.
+  const [activeTab, setActiveTab] = useState<AdminView>('run')
   const [submissionStatusFilter, setSubmissionStatusFilter] = useState<'pending' | 'approved' | 'rejected' | 'all'>('pending')
   const [submissionBoardFilter, setSubmissionBoardFilter] = useState<'current' | 'all'>('all')
 
@@ -1952,7 +1955,19 @@ export function BingoDashAdmin() {
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-gray-950" onDragEnd={onDragEnd}>
+    <div className="min-h-screen a-bg flex" onDragEnd={onDragEnd}>
+      {/* Fixed navigation. Every destination sits in the same place at every
+          moment — the tab strip it replaces moved around depending on which
+          board was selected, which is what made this hard to learn. */}
+      <AdminSidebar
+        view={activeTab}
+        onView={setActiveTab}
+        email={account?.email}
+        isOwner={isOwner}
+        onSignOut={signOut}
+        pending={photoSubmissions.filter(x => x.status === 'pending').length}
+      />
+      <div className="flex-1 min-w-0">
       {/* Header */}
       <header className="sticky top-0 z-30 border-b border-white/10" style={{ background: 'linear-gradient(135deg, #1a1130 0%, #0f0c1a 60%, #111827 100%)' }}>
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
@@ -2103,36 +2118,6 @@ export function BingoDashAdmin() {
       </header>
 
       <main className="max-w-6xl mx-auto px-6 py-8 flex flex-col gap-10">
-
-        {/* ── Tab navigation ───────────────────────────────────────────────── */}
-        <div className="flex gap-0 border-b border-white/10 -mt-4">
-          {(() => {
-            const pendingCount = photoSubmissions.filter(s => s.status === 'pending').length
-            return ([
-              { key: 'board', label: 'Board' },
-              { key: 'library', label: 'Card Library' },
-              { key: 'teams', label: `Teams${scopedTeams.length > 0 ? ` (${scopedTeams.length})` : ''}` },
-              { key: 'submissions', label: 'Submissions', badge: pendingCount },
-            ] as const).map(tab => (
-              <button
-                key={tab.key}
-                onClick={() => setActiveTab(tab.key)}
-                className={`px-5 py-3 text-sm font-bold border-b-2 -mb-px transition-colors flex items-center gap-2 ${
-                  activeTab === tab.key
-                    ? 'border-violet-500 text-violet-400'
-                    : 'border-transparent text-gray-600 hover:text-gray-300 hover:border-gray-600'
-                }`}
-              >
-                {tab.label}
-                {'badge' in tab && tab.badge > 0 && (
-                  <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-amber-500 text-black text-[10px] font-black">
-                    {tab.badge}
-                  </span>
-                )}
-              </button>
-            ))
-          })()}
-        </div>
 
         {activeTab === 'board' && <>
 
@@ -4835,6 +4820,7 @@ export function BingoDashAdmin() {
           </div>
         )
       })()}
+      </div>
     </div>
   )
 }
