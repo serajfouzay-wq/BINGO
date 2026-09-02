@@ -122,6 +122,8 @@ export interface BingoCategory {
 }
 
 export interface BingoTask {
+  /** One tile holding a set of activities — see bingo_bundle_items. */
+  is_bundle?: boolean
   id: string
   section_id: string
   title: string

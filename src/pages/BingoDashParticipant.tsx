@@ -13,6 +13,7 @@ import { SwipeablePages } from '../components/SwipeablePages'
 import { ParticleBackground } from '../components/ParticleBackground'
 import { TimeUpAlarm } from '../components/TimeUpAlarm'
 import { ContestCard } from '../components/ContestCard'
+import { BundleCard } from '../components/BundleCard'
 import { normalizeUrl } from '../lib/normalizeUrl'
 import type { BingoScan, BingoTask } from '../types/database'
 
@@ -548,7 +549,19 @@ export function BingoDashParticipant() {
 
         {/* Complete Activity */}
         {!isObserver && <div className="mt-8 animate-slide-up">
-          {task.is_contest && team && sectionId ? (
+          {/* A bundle tile is a whole activity set, so it replaces the normal
+              completion flow the same way a contest card does. */}
+          {task.is_bundle && team ? (
+            <>
+              <BundleCard task={task} teamId={team.id} marshalPassword={marshalPassword} />
+              <button
+                onClick={() => navigate(backPath)}
+                className="mt-4 w-full py-3 rounded-2xl text-white/70 font-bold border border-white/15 hover:bg-white/5 transition-colors"
+              >
+                ← Back to Board
+              </button>
+            </>
+          ) : task.is_contest && team && sectionId ? (
             /* ── Contest card: the whole duel flow replaces solo completion ──
                ContestCard owns every state (challenge → live → result), and the
                cross-off happens when the marshal declares a winner — never from
