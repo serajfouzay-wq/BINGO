@@ -3,6 +3,8 @@ import { useParams } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { ParticleBackground } from '../components/ParticleBackground'
 import { getScoreboardTheme } from '../lib/scoreboardThemes'
+import { CubeBoard } from '../components/CubeBoard'
+import { activeFaces, normaliseFaceCount, TILES_PER_FACE } from '../lib/cubeFaces'
 import { buildBingoSlots, completedBingoLines } from '../lib/bingoLines'
 import { duelBonusByTeam } from '../hooks/useBingoDuels'
 import type { BingoTask, BingoTeam, BingoScan, BingoSettings, BingoSection, BingoBoardCard, BingoDuel } from '../types/database'
@@ -129,6 +131,18 @@ export function BingoDashProjector() {
     .sort((a, b) => a.sort_order - b.sort_order)
   const slots = buildBingoSlots(gridTasks)
 
+  // Cube view. Built from the raw slot numbers, so face 2 position 4 lands on
+  // face 2 rather than wherever a flat 0-24 mapping would push it. Only shown
+  // when the board actually opens more than one face.
+  const cubeFaceCount = normaliseFaceCount(activeSection?.face_count)
+  const cubeFaces = activeFaces(cubeFaceCount).map(f =>
+    Array.from({ length: TILES_PER_FACE }, (_, i) =>
+      gridTasks.find(t => t.sort_order === f * TILES_PER_FACE + i) ?? null))
+  const completedSlots = new Set<number>(
+    gridTasks
+      .filter(t => scans.some(sc => sc.task_id === t.id && sc.completed))
+      .map(t => t.sort_order))
+
   // Contest bonuses won in duels. A winning DEFENDER has no tile to hang points
   // on, so this is the only place their win shows up.
   const duelBonuses = duelBonusByTeam(duels)
@@ -226,7 +240,20 @@ export function BingoDashProjector() {
 
       {/* Scoreboard */}
       <main className="relative z-10 px-10 pb-10">
-        <div className="max-w-[1600px] mx-auto">
+        <div className="max-w-[1600px] mx-auto flex gap-8 items-start">
+          {/* The cube is the spectacle; the rankings are what drives the room.
+              Both, side by side — dropping the table for the visual would be a
+              downgrade for a competitive event. */}
+          {cubeFaceCount > 1 && (
+            <div className="flex-shrink-0 hidden xl:block pt-4">
+              <CubeBoard faces={cubeFaces} completedSlots={completedSlots} size={380} />
+              <p className={`text-center text-xs font-black uppercase tracking-widest mt-6 ${theme.muted}`}>
+                {completedSlots.size} of {cubeFaceCount * 25} tiles claimed
+              </p>
+            </div>
+          )}
+
+          <div className="flex-1 min-w-0">
           {rows.length === 0 ? (
             <div className="text-center py-32 text-gray-500">
               <div className="text-6xl mb-4">🎯</div>
@@ -305,6 +332,7 @@ export function BingoDashProjector() {
               })}
             </div>
           )}
+          </div>
         </div>
       </main>
 
