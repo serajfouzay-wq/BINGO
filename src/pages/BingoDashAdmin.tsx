@@ -32,12 +32,12 @@ function extFromUrl(url: string): string {
   return match ? match[1].toLowerCase() : 'jpg'
 }
 
-function SubmissionThumb({ url }: { url: string }) {
+function SubmissionThumb({ url, fill = false }: { url: string; fill?: boolean }) {
   const [broken, setBroken] = useState(false)
   if (broken) {
     return (
       <div
-        className="w-28 h-28 flex flex-col items-center justify-center rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 text-[10px] font-bold flex-shrink-0 text-center px-2"
+        className={`${fill ? "w-full aspect-square" : "w-28 h-28"} flex flex-col items-center justify-center rounded-lg border border-red-500/30 bg-red-500/10 text-red-300 text-[10px] font-bold flex-shrink-0 text-center px-2`}
         title="The photo file is missing from storage. The submission row can be deleted."
       >
         <span className="text-2xl mb-1">🚫</span>
@@ -46,12 +46,12 @@ function SubmissionThumb({ url }: { url: string }) {
     )
   }
   return (
-    <a href={url} target="_blank" rel="noopener noreferrer" className="flex-shrink-0">
+    <a href={url} target="_blank" rel="noopener noreferrer" className={fill ? "block" : "flex-shrink-0"}>
       <img
         src={url}
         alt="submission"
         onError={() => setBroken(true)}
-        className="w-28 h-28 object-cover rounded-lg border a-border hover:opacity-90 transition-opacity"
+        className={`${fill ? "w-full aspect-square" : "w-28 h-28 rounded-lg border a-border"} object-cover hover:opacity-90 transition-opacity`}
       />
     </a>
   )
@@ -1649,25 +1649,9 @@ export function BingoDashAdmin() {
     await supabase.from('bingo_members').update({ team_id: newTeamId }).eq('id', memberId)
   }
 
-  const approvePhotoSubmission = async (sub: BingoPhotoSubmission) => {
-    setPhotoSubmissions(prev => prev.map(s => s.id === sub.id ? { ...s, status: 'approved' } : s))
-    await supabase.from('bingo_photo_submissions').update({ status: 'approved' }).eq('id', sub.id)
-    if (sub.scan_id) {
-      await supabase.from('bingo_scans').update({ completed: true, completed_at: new Date().toISOString() }).eq('id', sub.scan_id)
-      setScans(prev => prev.map(s => s.id === sub.scan_id ? { ...s, completed: true } : s))
-    }
-  }
 
-  const rejectPhotoSubmission = async (sub: BingoPhotoSubmission) => {
-    const wasApproved = sub.status === 'approved'
-    setPhotoSubmissions(prev => prev.map(s => s.id === sub.id ? { ...s, status: 'rejected' } : s))
-    await supabase.from('bingo_photo_submissions').update({ status: 'rejected' }).eq('id', sub.id)
-    // If we're flipping from approved → rejected, undo the scan completion.
-    if (wasApproved && sub.scan_id) {
-      await supabase.from('bingo_scans').update({ completed: false, completed_at: null }).eq('id', sub.scan_id)
-      setScans(prev => prev.map(s => s.id === sub.scan_id ? { ...s, completed: false } : s))
-    }
-  }
+
+
 
   const toggleSubmissionSelected = (id: string) => {
     setSelectedSubmissionIds(prev => {
@@ -1691,17 +1675,7 @@ export function BingoDashAdmin() {
     return match ? decodeURIComponent(match[1]) : null
   }
 
-  const deletePhotoSubmission = async (sub: BingoPhotoSubmission) => {
-    if (!confirm("Delete this submission? The photo will be removed and the team's progress on this tile will reset.")) return
-    setPhotoSubmissions(prev => prev.filter(s => s.id !== sub.id))
-    if (sub.status === 'approved' && sub.scan_id) {
-      await supabase.from('bingo_scans').update({ completed: false, completed_at: null }).eq('id', sub.scan_id)
-      setScans(prev => prev.map(s => s.id === sub.scan_id ? { ...s, completed: false } : s))
-    }
-    await supabase.from('bingo_photo_submissions').delete().eq('id', sub.id)
-    const path = extractStoragePath(sub.photo_url)
-    if (path) await supabase.storage.from('media').remove([path])
-  }
+
 
   const bulkDeleteSubmissions = async (subs: BingoPhotoSubmission[]) => {
     if (subs.length === 0) return
@@ -4038,84 +4012,84 @@ export function BingoDashAdmin() {
           {(() => {
             if (filteredSubmissions.length === 0) {
               return (
-                <div className="a-surface-2 border a-border rounded-xl p-8 text-center">
-                  <p className="a-text-2 text-sm">No {submissionStatusFilter === 'all' ? '' : submissionStatusFilter} submissions{submissionBoardFilter === 'current' ? ' for this board' : ''}.</p>
+                <div className="a-surface-2 border a-border rounded-xl p-10 text-center">
+                  <div className="text-4xl mb-3">📸</div>
+                  <p className="a-text font-bold">
+                    {submissionStatusFilter === 'pending' ? 'Nothing waiting for you' : 'No submissions here'}
+                  </p>
+                  <p className="a-text-3 text-sm mt-1">
+                    {submissionStatusFilter === 'pending'
+                      ? 'Photos appear here the moment a team submits one.'
+                      : `No ${submissionStatusFilter === 'all' ? '' : submissionStatusFilter} submissions${submissionBoardFilter === 'current' ? ' for this board' : ''}.`}
+                  </p>
                 </div>
               )
             }
             return (
-              <div className="flex flex-col gap-3">
+              <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))' }}>
                 {filteredSubmissions.map(sub => {
                   const subTeam = teams.find(t => t.id === sub.team_id)
                   const subTask = tasks.find(t => t.id === sub.task_id)
-                  const subSection = sections.find(s => s.id === subTeam?.section_id)
-                  const statusStyles = {
-                    pending: 'bg-amber-500/20 text-amber-300 border-amber-500/30',
-                    approved: 'bg-green-500/20 text-green-300 border-green-500/30',
-                    rejected: 'bg-red-500/20 text-red-300 border-red-500/30',
-                  }[sub.status]
                   const isSelected = selectedSubmissionIds.has(sub.id)
+                  const ring = sub.status === 'approved' ? '#16a34a'
+                    : sub.status === 'rejected' ? '#dc2626' : 'var(--a-border)'
                   return (
                     <div
                       key={sub.id}
-                      className={`flex items-start gap-4 a-surface-2 border rounded-xl p-4 hover:bg-white/[0.07] transition-colors ${
-                        isSelected ? 'border-teal-500/60 bg-teal-500/[0.08]' : 'a-border'
-                      }`}
+                      className="rounded-2xl overflow-hidden border-2 transition-all"
+                      style={{ borderColor: isSelected ? 'var(--a-brand)' : ring, background: 'var(--a-surface)' }}
                     >
-                      <label className="pt-1 cursor-pointer select-none flex-shrink-0">
-                        <input
-                          type="checkbox"
-                          checked={isSelected}
-                          onChange={() => toggleSubmissionSelected(sub.id)}
-                          className="w-4 h-4 accent-teal-500"
-                        />
-                      </label>
-                      <SubmissionThumb url={sub.photo_url} />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap mb-1">
-                          <p className="font-bold text-sm a-text truncate">{subTeam?.name ?? 'Unknown team'}</p>
-                          <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded border ${statusStyles}`}>
-                            {sub.status}
-                          </span>
-                          {subSection && (
-                            <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-white/10 a-text-2">
-                              {subSection.name}
+                      {/* Big enough to actually judge. A thumbnail forces a
+                          click-through per submission, and at an event that is
+                          a queue of people waiting while you open each one. */}
+                      <div className="a-surface-2">
+                        <SubmissionThumb url={sub.photo_url} fill />
+                      </div>
+
+                      <div className="p-3">
+                        <div className="flex items-start gap-2 mb-2">
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={() => toggleSubmissionSelected(sub.id)}
+                            className="w-4 h-4 accent-teal-500 mt-0.5 flex-shrink-0"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-black a-text truncate">{subTeam?.name ?? 'Unknown team'}</p>
+                            <p className="text-[11px] a-text-3 truncate">{subTask?.title ?? 'Unknown challenge'}</p>
+                          </div>
+                        </div>
+
+                        {sub.status === 'pending' ? (
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              onClick={() => bulkSetStatus([sub], 'approved')}
+                              disabled={bulkActioning}
+                              className="py-2 rounded-lg text-xs font-black text-white bg-green-600 hover:bg-green-500 active:scale-95 transition-all disabled:opacity-40"
+                            >
+                              ✓ Approve
+                            </button>
+                            <button
+                              onClick={() => bulkSetStatus([sub], 'rejected')}
+                              disabled={bulkActioning}
+                              className="py-2 rounded-lg text-xs font-black text-red-500 border border-red-500/40 hover:bg-red-500/10 active:scale-95 transition-all disabled:opacity-40"
+                            >
+                              ✗ Reject
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs font-black" style={{ color: ring }}>
+                              {sub.status === 'approved' ? '✓ Approved' : '✗ Rejected'}
                             </span>
-                          )}
-                        </div>
-                        <p className="text-xs a-text-2 truncate mb-1">{subTask?.title ?? 'Unknown task'}</p>
-                        <p className="text-[10px] a-text-3">{new Date(sub.created_at).toLocaleString()}</p>
-                        <div className="flex gap-2 mt-3">
-                          <button
-                            onClick={() => approvePhotoSubmission(sub)}
-                            disabled={sub.status === 'approved'}
-                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-colors ${
-                              sub.status === 'approved'
-                                ? 'bg-green-500 a-text cursor-default opacity-60'
-                                : 'bg-green-500/20 text-green-300 border border-green-500/30 hover:bg-green-500/30'
-                            }`}
-                          >
-                            ✓ {sub.status === 'approved' ? 'Approved' : 'Approve'}
-                          </button>
-                          <button
-                            onClick={() => rejectPhotoSubmission(sub)}
-                            disabled={sub.status === 'rejected'}
-                            className={`px-4 py-1.5 rounded-lg text-xs font-bold transition-colors ${
-                              sub.status === 'rejected'
-                                ? 'bg-red-500 a-text cursor-default opacity-60'
-                                : 'bg-red-500/20 text-red-300 border border-red-500/30 hover:bg-red-500/30'
-                            }`}
-                          >
-                            ✗ {sub.status === 'rejected' ? 'Rejected' : 'Reject'}
-                          </button>
-                          <button
-                            onClick={() => deletePhotoSubmission(sub)}
-                            className="ml-auto px-3 py-1.5 rounded-lg text-xs font-bold a-text-3 hover:text-red-400 hover:bg-red-500/10 transition-colors"
-                            title="Delete this submission and its photo. Resets the team's progress on this tile."
-                          >
-                            🗑 Delete
-                          </button>
-                        </div>
+                            <button
+                              onClick={() => bulkSetStatus([sub], sub.status === 'approved' ? 'rejected' : 'approved')}
+                              className="text-[11px] a-text-3 hover:a-text underline"
+                            >
+                              Change
+                            </button>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )
