@@ -8,6 +8,8 @@ import { TimeUpAlarm } from '../components/TimeUpAlarm'
 import { TileFace } from '../components/BingoTileFace'
 import { IncomingDuelBanner } from '../components/ContestCard'
 import { MyQrButton } from '../components/MyQrButton'
+import { activeFaces, faceName, faceColor, normaliseFaceCount } from '../lib/cubeFaces'
+import { tasksForFace } from '../lib/boardCards'
 import { LeaderApprovalQueue } from '../components/LeaderApprovalQueue'
 import { normalizeTileDisplay, type TileDisplay } from '../lib/bingoTileDisplay'
 import type { BingoTask, BingoScan, BingoSection, BingoTeam, BoardTimer } from '../types/database'
@@ -402,6 +404,7 @@ function BoardScreen({
   boardNote,
   boardNoteEvery,
   tileDisplay,
+  faceCountProp,
   onLeave,
 }: {
   team: { id: string; name: string }
@@ -411,6 +414,8 @@ function BoardScreen({
   boardNote: string
   boardNoteEvery: number
   tileDisplay: TileDisplay
+  /** Cube faces in play for this board; 1 keeps the classic layout. */
+  faceCountProp?: number | null
   onLeave: () => void
 }) {
   const navigate = useNavigate()
@@ -419,7 +424,12 @@ function BoardScreen({
   const [popupQueue, setPopupQueue] = useState<string[]>([])
   const celebratedLinesRef = useRef<Set<number> | null>(null)
 
-  const gridTaskIds = new Set(gridTasks.map(t => t.id))
+  // Which face this player is looking at. A one-face board never shows the
+  // tabs, so nothing changes for the classic game.
+  const [face, setFace] = useState(0)
+  const faceCount = normaliseFaceCount(faceCountProp)
+  const visibleTasks = faceCount > 1 ? tasksForFace(gridTasks, face) : gridTasks
+  const gridTaskIds = new Set(visibleTasks.map(t => t.id))
   const completedCount = scans.filter(s => s.completed && gridTaskIds.has(s.task_id)).length
 
   const getStatus = (taskId: string): TileStatus => {
@@ -434,7 +444,7 @@ function BoardScreen({
   const slots: (BingoTask | null)[] = (() => {
     const out: (BingoTask | null)[] = Array(GRID_SIZE).fill(null)
     const overflow: BingoTask[] = []
-    for (const t of gridTasks) {
+    for (const t of visibleTasks) {
       const s = t.sort_order
       if (Number.isInteger(s) && s >= 0 && s < GRID_SIZE && out[s] === null) out[s] = t
       else overflow.push(t)
@@ -523,7 +533,7 @@ function BoardScreen({
             <p className="text-purple-400 text-[10px] font-black uppercase tracking-widest">Bingo Dash</p>
             <h1 className="text-white text-xl font-black tracking-tight leading-tight">{team.name}</h1>
             <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-green-400 text-xs font-bold">{completedCount}/{gridTasks.length} completed</span>
+              <span className="text-green-400 text-xs font-bold">{completedCount}/{visibleTasks.length} completed</span>
               {lettersEarned && (
                 <span className="text-purple-300 text-xs font-black tracking-widest">{lettersEarned}!</span>
               )}
@@ -570,7 +580,35 @@ function BoardScreen({
       {/* 5×5 Grid with BINGO side letters */}
       <main className="relative z-10 px-3 pb-8">
         <div className="max-w-md mx-auto">
-          {gridTasks.length === 0 ? (
+          {/* Face tabs. Only rendered on a cube board, so a normal game is
+              visually unchanged. Each pill carries that face's own progress so
+              a team can see at a glance where the work is left. */}
+          {faceCount > 1 && (
+            <div className="flex gap-1.5 mb-3 flex-wrap justify-center">
+              {activeFaces(faceCount).map(f => {
+                const on = face === f
+                const ft = tasksForFace(gridTasks, f)
+                const doneOnFace = ft.filter(t => getStatus(t.id) === 'completed').length
+                return (
+                  <button
+                    key={f}
+                    onClick={() => setFace(f)}
+                    className="px-3 py-1.5 rounded-xl text-xs font-black transition-all active:scale-95"
+                    style={on
+                      ? { background: faceColor(f), color: '#fff' }
+                      : { background: 'rgba(255,255,255,0.06)', color: 'rgba(255,255,255,0.55)', border: '1px solid rgba(255,255,255,0.12)' }}
+                  >
+                    {faceName(f)}
+                    <span className={on ? 'text-white/70 ml-1.5' : 'text-white/35 ml-1.5'}>
+                      {doneOnFace}/{ft.length}
+                    </span>
+                  </button>
+                )
+              })}
+            </div>
+          )}
+
+          {visibleTasks.length === 0 ? (
             <div className="text-center py-20 text-gray-500">
               <div className="text-4xl mb-3">📋</div>
               <p className="font-bold">No grid set up yet</p>
@@ -817,6 +855,7 @@ export function BingoDashHome() {
         boardNote={boardNote}
         boardNoteEvery={boardNoteEvery}
         tileDisplay={normalizeTileDisplay(section?.tile_display)}
+        faceCountProp={section?.face_count}
         onLeave={leaveTeam}
       />
       {/* Another team can challenge us at any moment — the banner has to reach

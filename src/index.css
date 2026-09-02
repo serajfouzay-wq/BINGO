@@ -554,3 +554,16 @@ html.admin-dark {
 @source inline("text-fuchsia-300 text-amber-200 text-fuchsia-700");
 @source inline("text-emerald-400 text-lime-400 text-emerald-600");
 @source inline("bg-violet-600/20");
+
+/* Projector cube — one slow revolution, tilted so three faces stay visible.
+   36s is deliberate: fast enough to register as motion, slow enough that a
+   room can still read a tile that happens to be facing them. */
+@keyframes cube-spin {
+  from { transform: rotateX(-18deg) rotateY(0deg); }
+  to   { transform: rotateX(-18deg) rotateY(360deg); }
+}
+.cube-spin { animation: cube-spin 36s linear infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .cube-spin { animation: none; transform: rotateX(-18deg) rotateY(-25deg); }
+}

@@ -24,5 +24,17 @@ export async function fetchBoardTasks(sectionId: string): Promise<BingoTask[]> {
       return t ? { ...t, sort_order: p.slot, in_grid: true } : null
     })
     .filter((t): t is BingoTask => t !== null)
-    .slice(0, 25)
+}
+
+/**
+ * Tasks for one cube face, re-indexed so sort_order is 0-24 within that face.
+ * The player grid treats sort_order as a position in a 5x5, so a face has to
+ * arrive looking like an ordinary board — otherwise face 1's slot 25 falls
+ * straight into the overflow bucket and the tile appears in the wrong place.
+ */
+export function tasksForFace(all: BingoTask[], face: number): BingoTask[] {
+  const lo = face * 25, hi = lo + 25
+  return all
+    .filter(t => (t.sort_order ?? 0) >= lo && (t.sort_order ?? 0) < hi)
+    .map(t => ({ ...t, sort_order: (t.sort_order ?? 0) - lo }))
 }
