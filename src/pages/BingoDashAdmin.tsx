@@ -12,6 +12,7 @@ import { SCOREBOARD_THEMES, getScoreboardTheme } from '../lib/scoreboardThemes'
 import { Menu, MenuItem, MenuDivider } from '../components/AdminHeader'
 import { AdminSection } from '../components/AdminSection'
 import { AdminSidebar, type AdminView } from '../components/AdminSidebar'
+import { activeFaces, faceName, faceColor, slotFor, normaliseFaceCount } from '../lib/cubeFaces'
 import { RunEventPanel, Step } from '../components/RunEventPanel'
 import { CONTEST_GAMES, getContestGame } from '../lib/contestGames'
 import { duelBonusByTeam } from '../hooks/useBingoDuels'
@@ -580,6 +581,9 @@ export function BingoDashAdmin() {
   // Sidebar views. 'run' is the guided landing screen; 'settings' collects the
   // board options that used to sit stacked under the board editor.
   const [activeTab, setActiveTab] = useState<AdminView>('run')
+  // Which cube face the grid editor is showing. Faces beyond the board's
+  // face_count are not offered, so a 1-face board behaves exactly as before.
+  const [editFace, setEditFace] = useState(0)
   const [submissionStatusFilter, setSubmissionStatusFilter] = useState<'pending' | 'approved' | 'rejected' | 'all'>('pending')
   const [submissionBoardFilter, setSubmissionBoardFilter] = useState<'current' | 'all'>('all')
 
@@ -2330,11 +2334,42 @@ export function BingoDashAdmin() {
                 <p className="text-[10px] font-bold a-text-3 uppercase tracking-widest mb-3">
                   Grid — drag to reorder
                 </p>
+
+                {/* Face tabs. Shown only when the board actually opens more
+                    than one face, so a normal board looks untouched. Editing
+                    stays a flat 5x5 — the cube is a projector effect, not a
+                    thing you should have to rotate to place a card. */}
+                {normaliseFaceCount(currentBoard?.face_count) > 1 && (
+                  <div className="flex gap-1.5 mb-3 flex-wrap">
+                    {activeFaces(currentBoard?.face_count).map(f => {
+                      const on = editFace === f
+                      const filled = boardCards.filter(
+                        bc => bc.section_id === currentSectionId &&
+                              Math.floor(bc.slot / 25) === f).length
+                      return (
+                        <button
+                          key={f}
+                          onClick={() => setEditFace(f)}
+                          className="px-3 py-1.5 rounded-lg text-xs font-black transition-all"
+                          style={on
+                            ? { background: faceColor(f), color: '#fff' }
+                            : { background: 'var(--a-surface-2)', color: 'var(--a-text-2)' }}
+                        >
+                          {faceName(f)}
+                          <span className={on ? 'text-white/70 ml-1.5' : 'a-text-3 ml-1.5'}>
+                            {filled}/25
+                          </span>
+                        </button>
+                      )
+                    })}
+                  </div>
+                )}
                 <div
                   className="grid grid-cols-5 gap-1.5"
                   style={{ width: 'min(380px, calc(100vw - 80px))' }}
                 >
-                  {Array.from({ length: 25 }, (_, slotIndex) => {
+                  {Array.from({ length: 25 }, (_, posIndex) => {
+                    const slotIndex = slotFor(editFace, posIndex)
                     const task = gridSlots[slotIndex]
                     const isDragOver = dragOverSlot === slotIndex
 
@@ -3012,7 +3047,40 @@ export function BingoDashAdmin() {
               <h1 className="text-3xl font-black a-text tracking-tight">Board settings</h1>
               <p className="a-text-2 mt-1.5 text-sm">Options for <strong>{currentBoard?.name}</strong>. Each row shows its current value.</p>
             </div>
-            <AdminSection icon="🎨" title="Scoreboard Theme"
+            <AdminSection icon="🧊" title="Board Faces"
+          blurb="A cube board is several 5×5 boards in one. Same bingo rules on every face — more faces simply means more to complete."
+          summary={<>{normaliseFaceCount(currentBoard?.face_count)} face{normaliseFaceCount(currentBoard?.face_count) > 1 ? 's' : ''}</>}>
+          {(() => {
+            const current = normaliseFaceCount(currentBoard?.face_count)
+            const opts = [
+              { n: 1 as const, label: 'Flat board',  hint: 'One 5×5 — the classic game' },
+              { n: 2 as const, label: 'Two faces',   hint: '50 tiles, twice the points' },
+              { n: 6 as const, label: 'Full cube',   hint: '150 tiles across six faces' },
+            ]
+            return (
+              <div className="grid sm:grid-cols-3 gap-2">
+                {opts.map(o => (
+                  <button
+                    key={o.n}
+                    onClick={() => { if (current !== o.n) { updateBoardSettings({ face_count: o.n }); setEditFace(0) } }}
+                    className={`p-4 rounded-lg text-left border transition-colors ${
+                      current === o.n
+                        ? 'bg-teal-600 border-teal-500 text-white'
+                        : 'a-surface-2 a-border a-text-2 hover:border-teal-500'
+                    }`}
+                  >
+                    <p className="text-sm font-bold">{o.label}</p>
+                    <p className={`text-[11px] mt-0.5 leading-snug ${current === o.n ? 'text-white/75' : 'a-text-3'}`}>
+                      {o.hint}
+                    </p>
+                  </button>
+                ))}
+              </div>
+            )
+          })()}
+        </AdminSection>
+
+        <AdminSection icon="🎨" title="Scoreboard Theme"
           blurb="How the projector looks for this board — a legibility choice as much as a visual one."
           summary={<>{getScoreboardTheme(currentBoard?.scoreboard_theme).name}</>}>
 

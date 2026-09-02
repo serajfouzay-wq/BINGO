@@ -86,6 +86,8 @@ export interface BoardTimer {
 }
 
 export interface BingoSection extends BoardTimer {
+  /** Cube faces in play: 1, 2 or 6. See src/lib/cubeFaces.ts */
+  face_count?: number | null
   /** midnight | arena | daylight — see src/lib/scoreboardThemes.ts */
   scoreboard_theme?: string | null
   id: string
