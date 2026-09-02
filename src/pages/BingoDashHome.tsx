@@ -7,6 +7,7 @@ import { ParticleBackground } from '../components/ParticleBackground'
 import { TimeUpAlarm } from '../components/TimeUpAlarm'
 import { TileFace } from '../components/BingoTileFace'
 import { IncomingDuelBanner } from '../components/ContestCard'
+import { MyQrButton } from '../components/MyQrButton'
 import { LeaderApprovalQueue } from '../components/LeaderApprovalQueue'
 import { normalizeTileDisplay, type TileDisplay } from '../lib/bingoTileDisplay'
 import type { BingoTask, BingoScan, BingoSection, BingoTeam, BoardTimer } from '../types/database'
@@ -530,6 +531,12 @@ function BoardScreen({
           </div>
           <div className="flex flex-col items-end gap-2 flex-shrink-0 mt-1">
             <TimerDisplay settings={settings} />
+            {/* Carried by every player so nobody has to queue at the host desk
+                for a code they need mid-activity. */}
+            <MyQrButton
+              value={`bingodash-team:${team.id}`}
+              teamName={team.name}
+            />
             {!showLeaveConfirm ? (
               <button onClick={() => setShowLeaveConfirm(true)} className="text-xs text-gray-500 hover:text-gray-300 transition-colors">
                 Switch Team
