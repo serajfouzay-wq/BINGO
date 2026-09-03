@@ -14,9 +14,9 @@ import { useEffect, useRef, useState } from 'react'
 // on venue wifi.
 
 const FRAMES = 20
-const CYCLE_MS = 240_000          // a full day in four minutes
+const CYCLE_MS = 60_000            // a full day in one minute
 const STEP = CYCLE_MS / FRAMES
-const FADE_MS = 5000              // long fade; the light should creep, not cut
+const FADE_MS = 2200               // fade must stay shorter than the 3s step
 const src = (n: number) => `/forest/forest-${String(n).padStart(2, '0')}.webp`
 
 export function DayNightForest() {
