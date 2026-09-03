@@ -13,7 +13,7 @@
 export const TILES_PER_FACE = 25
 export const MAX_FACES = 6
 
-export type FaceCount = 1 | 2 | 6
+export type FaceCount = 1 | 2 | 3 | 4 | 5 | 6
 
 export const FACE_NAMES = [
   'Front', 'Back', 'Left', 'Right', 'Top', 'Bottom',
@@ -37,7 +37,8 @@ export function slotFor(face: number, position: number): number {
 }
 
 export function normaliseFaceCount(n: number | null | undefined): FaceCount {
-  return n === 6 ? 6 : n === 2 ? 2 : 1
+  const v = Math.round(Number(n ?? 1))
+  return (v >= 1 && v <= 6 ? v : 1) as FaceCount
 }
 
 /** The face indices actually in play for a board. */

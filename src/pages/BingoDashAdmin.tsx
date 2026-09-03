@@ -3023,32 +3023,29 @@ export function BingoDashAdmin() {
             </div>
             <AdminSection icon="🧊" title="Board Faces"
           blurb="A cube board is several 5×5 boards in one. Same bingo rules on every face — more faces simply means more to complete."
-          summary={<>{normaliseFaceCount(currentBoard?.face_count)} face{normaliseFaceCount(currentBoard?.face_count) > 1 ? 's' : ''}</>}>
+          summary={<>{normaliseFaceCount(currentBoard?.face_count)} × 5×5</>}>
           {(() => {
             const current = normaliseFaceCount(currentBoard?.face_count)
-            const opts = [
-              { n: 1 as const, label: 'Flat board',  hint: 'One 5×5 — the classic game' },
-              { n: 2 as const, label: 'Two faces',   hint: '50 tiles, twice the points' },
-              { n: 6 as const, label: 'Full cube',   hint: '150 tiles across six faces' },
-            ]
             return (
-              <div className="grid sm:grid-cols-3 gap-2">
-                {opts.map(o => (
-                  <button
-                    key={o.n}
-                    onClick={() => { if (current !== o.n) { updateBoardSettings({ face_count: o.n }); setEditFace(0) } }}
-                    className={`p-4 rounded-lg text-left border transition-colors ${
-                      current === o.n
-                        ? 'bg-teal-600 border-teal-500 text-white'
-                        : 'a-surface-2 a-border a-text-2 hover:border-teal-500'
-                    }`}
-                  >
-                    <p className="text-sm font-bold">{o.label}</p>
-                    <p className={`text-[11px] mt-0.5 leading-snug ${current === o.n ? 'text-white/75' : 'a-text-3'}`}>
-                      {o.hint}
-                    </p>
-                  </button>
-                ))}
+              <div>
+                <div className="flex flex-wrap gap-2">
+                  {[1, 2, 3, 4, 5, 6].map(n => (
+                    <button
+                      key={n}
+                      onClick={() => { if (current !== n) { updateBoardSettings({ face_count: n }); setEditFace(0) } }}
+                      className={`w-16 py-3 rounded-xl font-black transition-colors ${
+                        current === n ? 'bg-teal-600 text-white' : 'a-surface-2 a-text-2 hover:a-text'
+                      }`}
+                    >
+                      {n}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-xs a-text-3 mt-3">
+                  {current === 1
+                    ? 'One flat 5×5 — the classic game.'
+                    : `${current} faces · ${current * 25} tiles · up to ${current * 12} bingo lines.`}
+                </p>
               </div>
             )
           })()}
