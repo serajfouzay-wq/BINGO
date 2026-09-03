@@ -8,6 +8,8 @@ import { TimeUpAlarm } from '../components/TimeUpAlarm'
 import { TileFace } from '../components/BingoTileFace'
 import { IncomingDuelBanner } from '../components/ContestCard'
 import { MyQrButton } from '../components/MyQrButton'
+import { PixelForest } from '../components/PixelForest'
+import { WaitingTiger } from '../components/WaitingTiger'
 import { activeFaces, faceName, faceColor, normaliseFaceCount } from '../lib/cubeFaces'
 import { tasksForFace } from '../lib/boardCards'
 import { LeaderApprovalQueue } from '../components/LeaderApprovalQueue'
@@ -819,25 +821,42 @@ export function BingoDashHome() {
   if (section && !section.game_started) {
     return (
       <>
-        <div className="min-h-screen bg-gray-950 flex flex-col items-center justify-center relative overflow-hidden px-4">
-          <ParticleBackground />
-          <div className="relative z-10 text-center animate-slide-up">
-            <div className="text-6xl mb-5">⏳</div>
-            <h1 className="text-4xl font-black text-white tracking-tight mb-2">Game Not Started Yet</h1>
-            <p className="text-purple-400 font-bold text-base mb-1">{section.name}</p>
-            <p className="text-gray-400 text-sm mb-8">
-              You're in <span className="text-white font-bold">{team!.name}</span>. Hang tight — the game will begin soon!
+        <div className="min-h-screen relative overflow-hidden flex flex-col items-center justify-end pb-0">
+          {/* Players can sit on this screen for several minutes before a
+              facilitator starts, so it needs to be somewhere pleasant to wait
+              rather than a spinner on black. */}
+          <PixelForest />
+
+          <div className="relative z-10 text-center px-6 pt-16 flex-1 flex flex-col justify-center">
+            <p className="text-[11px] font-black uppercase tracking-[0.25em] text-emerald-300/60 mb-2">
+              {section.name}
             </p>
-            <div className="flex flex-col items-center gap-2">
-              <div className="w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin" />
-              <p className="text-gray-600 text-xs mt-2">Waiting for facilitator to start the game...</p>
+            <h1 className="text-3xl sm:text-4xl font-black text-white tracking-tight mb-3">
+              Waiting to start
+            </h1>
+            <p className="text-white/50 text-sm">
+              You're in <span className="text-amber-300 font-bold">{team!.name}</span>.
+              <br className="sm:hidden" /> The game begins when your host says go.
+            </p>
+
+            <div className="w-48 mx-auto mt-7">
+              <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.1)' }}>
+                <div className="h-full rounded-full tiger-bar" style={{ background: '#fbbf24' }} />
+              </div>
             </div>
+
             <button
               onClick={leaveTeam}
-              className="mt-10 text-xs text-gray-600 hover:text-gray-400 transition-colors"
+              className="mt-8 text-xs text-white/25 hover:text-white/50 transition-colors"
             >
-              Switch Team
+              Switch team
             </button>
+          </div>
+
+          {/* The tiger stands and walks off the moment the board goes live,
+              so the wait ends with something happening rather than a jump cut. */}
+          <div className="relative z-10 w-full">
+            <WaitingTiger />
           </div>
         </div>
         <TimeUpAlarm settings={section} />

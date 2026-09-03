@@ -18,9 +18,9 @@ type Vec = { x: number; y: number }
 
 const FACE_ANGLES: Vec[] = [
   { x: 0,   y: 0    },  // front
+  { x: 0,   y: -90  },  // right
   { x: 0,   y: -180 },  // back
   { x: 0,   y: 90   },  // left
-  { x: 0,   y: -90  },  // right
   { x: -90, y: 0    },  // top
   { x: 90,  y: 0    },  // bottom
 ]
@@ -56,14 +56,26 @@ export function CubeBoard({
     ;(e.target as Element).setPointerCapture?.(e.pointerId)
   }
 
+  // Yaw limits for partial cubes: 1 face is nearly fixed, 2 sweeps one corner,
+  // 3 sweeps an open box. From 4 faces on it is a closed ring, so free spin.
+  const limitY: [number, number] | null =
+    faces.length >= 4 ? null
+    : faces.length === 3 ? [-200, 20]
+    : faces.length === 2 ? [-110, 20]
+    : [-35, 35]
+
   const onMove = useCallback((e: PointerEvent) => {
     const d = drag.current
     if (!d) return
     // Clamped on X so the cube cannot be tumbled upside down, which is
     // disorienting and makes the labels unreadable.
     const nx = Math.max(-80, Math.min(80, d.rx - (e.clientY - d.y) * 0.4))
-    setRot({ x: nx, y: d.ry + (e.clientX - d.x) * 0.4 })
-  }, [])
+    let ny = d.ry + (e.clientX - d.x) * 0.4
+    // With fewer than four faces the far side is open, so free rotation just
+    // spins you into empty space. Clamp to the arc that actually has faces.
+    if (limitY) ny = Math.max(limitY[0], Math.min(limitY[1], ny))
+    setRot({ x: nx, y: ny })
+  }, [limitY])
 
   const onUp = useCallback(() => { drag.current = null }, [])
 

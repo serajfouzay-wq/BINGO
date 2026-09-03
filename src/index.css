@@ -567,3 +567,33 @@ html.admin-dark {
 @media (prefers-reduced-motion: reduce) {
   .cube-spin { animation: none; transform: rotateX(-18deg) rotateY(-25deg); }
 }
+
+/* Loading screen. The bar is indeterminate on purpose — we do not know how
+   long the data will take, and a fake percentage that jumps to 100 is worse
+   than an honest sweep. */
+@keyframes tiger-bar {
+  0%   { width: 8%;  margin-left: 0%; }
+  50%  { width: 45%; margin-left: 30%; }
+  100% { width: 8%;  margin-left: 92%; }
+}
+.tiger-bar { animation: tiger-bar 1.6s ease-in-out infinite; }
+
+@keyframes tiger-motes {
+  from { transform: translate3d(0,0,0); }
+  to   { transform: translate3d(-420px,-120px,0); }
+}
+.tiger-motes { animation: tiger-motes 40s linear infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .tiger-bar, .tiger-motes { animation: none; }
+}
+
+/* Fireflies drifting across the waiting-screen forest. Deliberately slow: this
+   screen can be on a phone for several minutes before a facilitator starts. */
+@keyframes forest-flies {
+  from { transform: translate3d(0,0,0); opacity: .35; }
+  50%  { opacity: .75; }
+  to   { transform: translate3d(-460px,-140px,0); opacity: .35; }
+}
+.forest-flies { animation: forest-flies 55s linear infinite; }
+@media (prefers-reduced-motion: reduce) { .forest-flies { animation: none; } }

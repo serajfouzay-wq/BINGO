@@ -15,13 +15,20 @@ export const MAX_FACES = 6
 
 export type FaceCount = 1 | 2 | 3 | 4 | 5 | 6
 
+// Ordered so each added face is ADJACENT to the previous one. With the old
+// Front/Back-first order, a two-face board rendered as two opposite panels
+// floating apart rather than a corner — it did not read as a cube at all.
+//   2 faces -> a corner
+//   3 faces -> an open box
+//   4 faces -> a ring you can spin right round
+//   5 adds the top, 6 closes it
 export const FACE_NAMES = [
-  'Front', 'Back', 'Left', 'Right', 'Top', 'Bottom',
+  'Front', 'Right', 'Back', 'Left', 'Top', 'Bottom',
 ] as const
 
 /** Colour per face so a player can tell at a glance which one they are on. */
 export const FACE_COLORS = [
-  '#0d9488', '#d97706', '#7c3aed', '#0ea5e9', '#dc2626', '#65a30d',
+  '#2dd4bf', '#fbbf24', '#a78bfa', '#38bdf8', '#f472b6', '#4ade80',
 ] as const
 
 export function faceOf(slot: number): number {
@@ -62,11 +69,11 @@ export function faceColor(i: number): string {
 export function faceTransform(i: number, size: number): string {
   const d = size / 2
   switch (i) {
-    case 0: return `translateZ(${d}px)`
-    case 1: return `rotateY(180deg) translateZ(${d}px)`
-    case 2: return `rotateY(-90deg) translateZ(${d}px)`
-    case 3: return `rotateY(90deg) translateZ(${d}px)`
-    case 4: return `rotateX(90deg) translateZ(${d}px)`
-    default: return `rotateX(-90deg) translateZ(${d}px)`
+    case 0: return `translateZ(${d}px)`                        // front
+    case 1: return `rotateY(90deg) translateZ(${d}px)`         // right
+    case 2: return `rotateY(180deg) translateZ(${d}px)`        // back
+    case 3: return `rotateY(-90deg) translateZ(${d}px)`        // left
+    case 4: return `rotateX(90deg) translateZ(${d}px)`         // top
+    default: return `rotateX(-90deg) translateZ(${d}px)`       // bottom
   }
 }
