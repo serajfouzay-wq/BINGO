@@ -8,7 +8,7 @@ import { TimeUpAlarm } from '../components/TimeUpAlarm'
 import { TileFace } from '../components/BingoTileFace'
 import { IncomingDuelBanner } from '../components/ContestCard'
 import { MyQrButton } from '../components/MyQrButton'
-import { PixelForest } from '../components/PixelForest'
+import { DayNightForest } from '../components/DayNightForest'
 import { WaitingTiger } from '../components/WaitingTiger'
 import { activeFaces, faceName, faceColor, normaliseFaceCount } from '../lib/cubeFaces'
 import { tasksForFace } from '../lib/boardCards'
@@ -825,7 +825,7 @@ export function BingoDashHome() {
           {/* Players can sit on this screen for several minutes before a
               facilitator starts, so it needs to be somewhere pleasant to wait
               rather than a spinner on black. */}
-          <PixelForest />
+          <DayNightForest />
 
           <div className="relative z-10 text-center px-6 pt-16 flex-1 flex flex-col justify-center">
             <p className="text-[11px] font-black uppercase tracking-[0.25em] text-emerald-300/60 mb-2">
