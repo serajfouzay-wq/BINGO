@@ -1,61 +1,92 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 // Day-to-night forest for the waiting screen.
 //
-// Twenty frames cross-faded, one full day over four minutes. That pace suits
-// the situation: players sit here for anything from one minute to twenty, so
-// the scene should visibly change if you look up twice without ever being
-// distracting enough to watch.
+// Twenty frames over four minutes, true cross-fade. Two layers stay mounted
+// for the whole life of the component and swap roles: the bottom one holds the
+// current frame at full opacity while the top one fades the next frame in over
+// it. An earlier version keyed the layers by frame index, so React unmounted
+// the outgoing frame and mounted the incoming one at zero opacity — both were
+// transparent for an instant and the background showed through as a black
+// flash between every frame.
 //
-// Only two frames are mounted at a time and the next is prefetched, because
-// 700 phones hit this screen at once on venue wifi and the first paint must
-// not wait on 428KB of artwork.
+// Frames are prefetched one ahead because 700 phones hit this screen at once
+// on venue wifi.
 
 const FRAMES = 20
-const CYCLE_MS = 240_000
+const CYCLE_MS = 240_000          // a full day in four minutes
 const STEP = CYCLE_MS / FRAMES
+const FADE_MS = 5000              // long fade; the light should creep, not cut
 const src = (n: number) => `/forest/forest-${String(n).padStart(2, '0')}.webp`
 
 export function DayNightForest() {
-  const [i, setI] = useState(() => Math.floor(Math.random() * FRAMES))
-  const [ready, setReady] = useState(false)
+  const [base, setBase] = useState(() => Math.floor(Math.random() * FRAMES))
+  const [incoming, setIncoming] = useState<number | null>(null)
+  const [fade, setFade] = useState(0)
+  const timers = useRef<number[]>([])
 
   useEffect(() => {
-    const t = setInterval(() => setI(v => (v + 1) % FRAMES), STEP)
-    return () => clearInterval(t)
+    const advance = () => {
+      const next = (baseRef.current + 1) % FRAMES
+
+      // Decode before showing it, so the fade never reveals a half-loaded image.
+      const img = new Image()
+      img.src = src(next)
+      const start = () => {
+        setIncoming(next)
+        // One frame later, so the browser has painted it at opacity 0 and the
+        // transition actually runs instead of snapping.
+        requestAnimationFrame(() => requestAnimationFrame(() => setFade(1)))
+        timers.current.push(window.setTimeout(() => {
+          // Promote: the incoming frame becomes the base, then the top layer is
+          // reset with no transition so it is ready for the next fade.
+          setBase(next)
+          setFade(0)
+          setIncoming(null)
+        }, FADE_MS))
+      }
+      if (img.complete) start()
+      else { img.onload = start; img.onerror = start }
+    }
+
+    const id = window.setInterval(advance, STEP)
+    return () => {
+      clearInterval(id)
+      timers.current.forEach(clearTimeout)
+    }
   }, [])
 
-  useEffect(() => {
-    const img = new Image()
-    img.src = src((i + 1) % FRAMES)
-  }, [i])
+  // Keep a ref in step so the interval always reads the current frame without
+  // being torn down and rebuilt on every tick.
+  const baseRef = useRef(base)
+  useEffect(() => { baseRef.current = base }, [base])
 
+  // Warm the next two frames.
   useEffect(() => {
-    const img = new Image()
-    img.onload = () => setReady(true)
-    img.src = src(i)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+    for (const n of [1, 2]) {
+      const img = new Image()
+      img.src = src((base + n) % FRAMES)
+    }
+  }, [base])
 
   return (
     <div className="absolute inset-0 overflow-hidden" style={{ background: '#0a1410' }}>
-      {[0, 1].map(off => {
-        const idx = (i + off) % FRAMES
-        return (
-          <div
-            key={idx}
-            className="absolute inset-0 bg-cover bg-center"
-            style={{
-              backgroundImage: `url(${src(idx)})`,
-              opacity: off === 0 && ready ? 1 : 0,
-              transition: 'opacity 6s linear',
-            }}
-          />
-        )
-      })}
+      {/* Bottom layer: never fades, so there is always something opaque. */}
+      <div
+        className="absolute inset-0 bg-cover bg-center"
+        style={{ backgroundImage: `url(${src(base)})` }}
+      />
+      {/* Top layer: the next frame fading in over the one below. */}
+      <div
+        className="absolute inset-0 bg-cover bg-center"
+        style={{
+          backgroundImage: incoming === null ? 'none' : `url(${src(incoming)})`,
+          opacity: fade,
+          transition: fade === 1 ? `opacity ${FADE_MS}ms linear` : 'none',
+        }}
+      />
 
-      {/* Vignette so white text stays readable whatever the sky is doing —
-          the midday frames are bright enough to wash it out otherwise. */}
+      {/* Vignette so white text stays readable whatever the sky is doing. */}
       <div className="absolute inset-0" style={{
         background: 'radial-gradient(ellipse 90% 70% at 50% 40%, transparent 20%, rgba(4,10,8,0.72) 100%)',
       }} />
