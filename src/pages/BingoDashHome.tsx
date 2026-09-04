@@ -141,7 +141,7 @@ function JoinScreen({ onJoin }: { onJoin: (teamId: string, password: string) => 
                     className={`w-full px-5 py-4 rounded-2xl border-2 text-left font-bold text-lg transition-all duration-150 ${
                       notReady
                         ? 'border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed'
-                        : 'border-gray-200 text-gray-800 hover:border-purple-400 hover:bg-purple-50 active:scale-[0.98]'
+                        : 'border-gray-200 text-gray-800 hover:border-teal-400 hover:bg-purple-50 active:scale-[0.98]'
                     }`}
                   >
                     <div className="flex items-center justify-between">
@@ -165,13 +165,13 @@ function JoinScreen({ onJoin }: { onJoin: (teamId: string, password: string) => 
         >
           <button
             onClick={() => { setStep(1); setPassword(''); setError('') }}
-            className="text-sm text-purple-500 font-bold mb-4 hover:text-purple-700 transition-colors"
+            className="text-sm text-teal-500 font-bold mb-4 hover:text-purple-700 transition-colors"
           >
             &larr; Back
           </button>
           <h2 className="text-2xl font-black text-gray-900 text-center mb-1">Enter Password</h2>
           <p className="text-gray-400 text-center text-sm mb-1">
-            Group: <span className="text-purple-500 font-bold">{selectedTeam.name}</span>
+            Group: <span className="text-teal-500 font-bold">{selectedTeam.name}</span>
           </p>
           <p className="text-gray-400 text-center text-xs mb-5">
             Enter the 4-digit password given to your group.
@@ -345,7 +345,7 @@ function BingoPopup({ letters, onDismiss }: { letters: string; onDismiss: () => 
             🎉 You got BINGO! 🎉
           </p>
         ) : (
-          <p className="text-purple-300 font-bold text-base mt-3 tracking-wide">
+          <p className="text-teal-300 font-bold text-base mt-3 tracking-wide">
             Bingo line complete!
           </p>
         )}
@@ -532,12 +532,12 @@ function BoardScreen({
       <header className="relative z-10 px-4 pt-5 pb-3">
         <div className="max-w-md mx-auto flex items-start justify-between gap-3">
           <div>
-            <p className="text-purple-400 text-[10px] font-black uppercase tracking-widest">Bingo Dash</p>
+            <p className="text-teal-400 text-[10px] font-black uppercase tracking-widest">Bingo Dash</p>
             <h1 className="text-white text-xl font-black tracking-tight leading-tight">{team.name}</h1>
             <div className="flex items-center gap-2 mt-0.5">
               <span className="text-green-400 text-xs font-bold">{completedCount}/{visibleTasks.length} completed</span>
               {lettersEarned && (
-                <span className="text-purple-300 text-xs font-black tracking-widest">{lettersEarned}!</span>
+                <span className="text-teal-300 text-xs font-black tracking-widest">{lettersEarned}!</span>
               )}
             </div>
           </div>

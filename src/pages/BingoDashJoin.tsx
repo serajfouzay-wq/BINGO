@@ -121,7 +121,7 @@ function JoinScreen({
       <div className="relative z-10 text-center mb-10 animate-slide-up">
         <div className="text-6xl mb-4">{isObserver ? '👁' : '🎯'}</div>
         <h1 className="text-5xl font-black text-white tracking-tight">BINGO DASH</h1>
-        <p className="text-purple-400 mt-2 text-base font-bold">{sectionName}</p>
+        <p className="text-teal-400 mt-2 text-base font-bold">{sectionName}</p>
         {isObserver
           ? <p className="text-blue-400 mt-1 text-sm font-semibold">Observer mode &middot; View only</p>
           : <p className="text-gray-400 mt-1 text-sm">Complete challenges &middot; Scan tiles &middot; Win</p>
@@ -184,7 +184,7 @@ function JoinScreen({
         >
           <button
             onClick={() => { setStep('name'); setError('') }}
-            className="text-sm text-purple-500 font-bold mb-4 hover:text-purple-700 transition-colors"
+            className="text-sm text-teal-500 font-bold mb-4 hover:text-purple-700 transition-colors"
           >
             &larr; Back
           </button>
@@ -198,7 +198,7 @@ function JoinScreen({
             {isObserver ? 'Select Group to Watch' : 'Join Game'}
           </h2>
           <p className="text-gray-400 text-center text-sm mb-1">
-            Hi <span className="text-purple-500 font-bold">{trimmedName}</span>!
+            Hi <span className="text-teal-500 font-bold">{trimmedName}</span>!
           </p>
           <p className="text-gray-400 text-center text-sm mb-5">
             {isObserver ? 'Pick the group you want to observe' : 'Search and select your group'}
@@ -243,7 +243,7 @@ function JoinScreen({
                         ? 'border-gray-200 bg-gray-50 text-gray-400 cursor-not-allowed'
                         : isObserver
                           ? 'border-gray-200 text-gray-800 hover:border-blue-400 hover:bg-blue-50 active:scale-[0.98]'
-                          : 'border-gray-200 text-gray-800 hover:border-purple-400 hover:bg-purple-50 active:scale-[0.98]'
+                          : 'border-gray-200 text-gray-800 hover:border-teal-400 hover:bg-purple-50 active:scale-[0.98]'
                     }`}
                   >
                     <div className="flex items-center justify-between">
@@ -282,7 +282,7 @@ function JoinScreen({
               setPassword('')
               setError('')
             }}
-            className="text-sm text-purple-500 font-bold mb-4 hover:text-purple-700 transition-colors"
+            className="text-sm text-teal-500 font-bold mb-4 hover:text-purple-700 transition-colors"
           >
             &larr; Back
           </button>
@@ -290,7 +290,7 @@ function JoinScreen({
             Enter Password
           </h2>
           <p className="text-gray-400 text-center text-sm mb-1">
-            <span className="text-purple-500 font-bold">{trimmedName}</span> joining <span className="text-purple-500 font-bold">{selectedTeam.name}</span>
+            <span className="text-teal-500 font-bold">{trimmedName}</span> joining <span className="text-teal-500 font-bold">{selectedTeam.name}</span>
           </p>
           <p className="text-gray-400 text-center text-xs mb-5">
             Enter the 4-digit password given to your group.
@@ -435,7 +435,7 @@ function BingoPopup({ letters, onDismiss }: { letters: string; onDismiss: () => 
             You got BINGO!
           </p>
         ) : (
-          <p className="text-purple-300 font-bold text-base mt-3 tracking-wide">Bingo line complete!</p>
+          <p className="text-teal-300 font-bold text-base mt-3 tracking-wide">Bingo line complete!</p>
         )}
         <p className="text-white/30 text-sm mt-8">Tap to continue</p>
       </div>
@@ -602,12 +602,12 @@ function BoardScreen({
       <header className="relative z-10 px-4 pt-5 pb-3">
         <div className="max-w-md mx-auto flex items-start justify-between gap-3">
           <div>
-            <p className="text-purple-400 text-[10px] font-black uppercase tracking-widest">Bingo Dash &middot; {sectionName}</p>
+            <p className="text-teal-400 text-[10px] font-black uppercase tracking-widest">Bingo Dash &middot; {sectionName}</p>
             <h1 className="text-white text-xl font-black tracking-tight leading-tight">{team.name}</h1>
             <div className="flex items-center gap-2 mt-0.5">
               <span className="text-green-400 text-xs font-bold">{completedCount}/{gridTasks.length} completed</span>
               {lettersEarned && (
-                <span className="text-purple-300 text-xs font-black tracking-widest">{lettersEarned}!</span>
+                <span className="text-teal-300 text-xs font-black tracking-widest">{lettersEarned}!</span>
               )}
               {memberRole === 'observer' && (
                 <span className="text-blue-300 text-[10px] font-black uppercase tracking-wider bg-blue-900/40 px-1.5 py-0.5 rounded">👁 Observer</span>
@@ -1049,7 +1049,7 @@ export function BingoDashJoin() {
             <div className="text-6xl mb-4">😵</div>
             <h1 className="text-3xl font-black text-white mb-2">Game Not Found</h1>
             <p className="text-gray-400">
-              The link <span className="text-purple-400 font-mono">/play/{sectionSlug}</span> doesn't match any active game.
+              The link <span className="text-teal-400 font-mono">/play/{sectionSlug}</span> doesn't match any active game.
             </p>
             <p className="text-gray-500 text-sm mt-2">Check the QR code or ask your facilitator for the correct link.</p>
           </div>
@@ -1077,12 +1077,12 @@ export function BingoDashJoin() {
             <div className="relative z-10 text-center animate-slide-up">
               <div className="text-6xl mb-5">⏳</div>
               <h1 className="text-4xl font-black text-white tracking-tight mb-2">Game Not Started Yet</h1>
-              <p className="text-purple-400 font-bold text-base mb-1">{section.name}</p>
+              <p className="text-teal-400 font-bold text-base mb-1">{section.name}</p>
               <p className="text-gray-400 text-sm mb-8">
                 You're in <span className="text-white font-bold">{team.name}</span>. Hang tight — the game will begin soon!
               </p>
               <div className="flex flex-col items-center gap-2">
-                <div className="w-8 h-8 border-4 border-purple-500 border-t-transparent rounded-full animate-spin" />
+                <div className="w-8 h-8 border-4 border-teal-500 border-t-transparent rounded-full animate-spin" />
                 <p className="text-gray-600 text-xs mt-2">Waiting for facilitator to start the game...</p>
               </div>
               <button

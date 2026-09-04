@@ -28,7 +28,7 @@ export function BingoDashHub() {
       {/* Ambient motion — slow enough to sit behind a live room without
           distracting from a facilitator talking over it. */}
       <div className="pointer-events-none absolute inset-0 opacity-40">
-        <div className="absolute -top-40 -left-40 w-96 h-96 rounded-full bg-violet-600/20 blur-3xl animate-pulse-slow" />
+        <div className="absolute -top-40 -left-40 w-96 h-96 rounded-full bg-teal-600/20 blur-3xl animate-pulse-slow" />
         <div className="absolute top-1/3 -right-40 w-96 h-96 rounded-full bg-fuchsia-600/15 blur-3xl animate-pulse-slower" />
         <div className="absolute -bottom-40 left-1/4 w-96 h-96 rounded-full bg-sky-600/15 blur-3xl animate-pulse-slow" />
       </div>
@@ -36,7 +36,7 @@ export function BingoDashHub() {
       <div className="relative z-10 max-w-4xl mx-auto px-5 py-16">
         <header className="text-center mb-14 animate-rise">
           <div className="text-6xl mb-4 animate-float-soft">🎯</div>
-          <h1 className="text-5xl sm:text-6xl font-black tracking-tight bg-gradient-to-r from-violet-300 via-fuchsia-300 to-sky-300 bg-clip-text text-transparent">
+          <h1 className="text-5xl sm:text-6xl font-black tracking-tight bg-gradient-to-r from-teal-300 via-fuchsia-300 to-sky-300 bg-clip-text text-transparent">
             BINGO DASH
           </h1>
           <p className="text-white/55 mt-3 text-lg">Complete challenges · Scan tiles · Win</p>
@@ -51,7 +51,7 @@ export function BingoDashHub() {
               className={`group animate-rise rounded-3xl border-2 p-5 transition-all duration-200
                 hover:-translate-y-1 active:scale-[0.98]
                 ${t.primary
-                  ? 'border-violet-400/60 bg-violet-500/15 hover:border-violet-300 hover:bg-violet-500/25'
+                  ? 'border-teal-400/60 bg-teal-500/15 hover:border-teal-300 hover:bg-teal-500/25'
                   : 'border-white/10 bg-white/[0.04] hover:border-white/25 hover:bg-white/[0.07]'}`}
             >
               <div className="flex items-center gap-4">
@@ -71,7 +71,7 @@ export function BingoDashHub() {
         <footer className="mt-16 text-center animate-rise" style={{ animationDelay: '500ms' }}>
           <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full border border-white/10 bg-white/[0.03]">
             <span className="text-[10px] uppercase tracking-[0.2em] text-white/35">Powered by</span>
-            <span className="text-sm font-black bg-gradient-to-r from-violet-300 to-fuchsia-300 bg-clip-text text-transparent">
+            <span className="text-sm font-black bg-gradient-to-r from-teal-300 to-fuchsia-300 bg-clip-text text-transparent">
               Pixels and Purpose Enterprise
             </span>
           </div>

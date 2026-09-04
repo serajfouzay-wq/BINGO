@@ -46,7 +46,7 @@ function GameToggle({ label, on, busy, onToggle }: {
       className={`px-2.5 py-1 rounded-full text-[11px] font-black uppercase tracking-wider border transition-colors disabled:opacity-50 ${
         on
           ? 'bg-green-400/15 text-green-300 border-green-400/40 hover:bg-green-400/25'
-          : 'bg-white/5 text-gray-500 border-white/15 hover:bg-white/10'
+          : 'a-surface-2 a-text-3 border-white/15 hover:bg-white/10'
       }`}>
       {label} {on ? 'ON' : 'OFF'}
     </button>
@@ -203,16 +203,16 @@ export function BingoDashAccounts() {
     const facExpired = !!a.access_expires_at && new Date(a.access_expires_at).getTime() <= Date.now()
     const hostEmail = accounts.find(x => x.id === a.facilitator_host)?.email ?? 'unknown host'
     return (
-    <div className="px-4 py-3 rounded-2xl bg-white/5 border border-white/10">
+    <div className="px-4 py-3 rounded-2xl a-surface-2 border a-border">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-white font-bold text-sm truncate">{a.display_name ?? a.email ?? a.id}</p>
+          <p className="a-text font-bold text-sm truncate">{a.display_name ?? a.email ?? a.id}</p>
           <div className="flex items-center flex-wrap gap-2 mt-1">
             <span className={`text-[11px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border ${STATUS_STYLES[a.status]}`}>
               {a.status}
             </span>
             {a.role === 'owner' && (
-              <span className="text-[11px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border bg-purple-400/15 text-purple-300 border-purple-400/40">
+              <span className="text-[11px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full border bg-teal-400/15 text-teal-300 border-teal-400/40">
                 owner
               </span>
             )}
@@ -225,10 +225,10 @@ export function BingoDashAccounts() {
                 facilitator
               </span>
             )}
-            <span className="text-[11px] text-gray-500" title={fmtExpiry(a.created_at)}>
+            <span className="text-[11px] a-text-3" title={fmtExpiry(a.created_at)}>
               {a.status === 'pending' ? 'Requested' : 'Signed up'} {ago(a.created_at)}
             </span>
-            {a.id === me?.id && <span className="text-[11px] text-gray-500">you</span>}
+            {a.id === me?.id && <span className="text-[11px] a-text-3">you</span>}
           </div>
         </div>
         {a.role !== 'owner' && (
@@ -242,13 +242,13 @@ export function BingoDashAccounts() {
             )}
             {a.status !== 'approved' && (
               <button onClick={() => setStatus(a.id, 'approved')} disabled={busyId === a.id}
-                className="px-3 py-1.5 rounded-xl text-xs font-black bg-green-600 hover:bg-green-500 text-white transition-colors disabled:opacity-50">
+                className="px-3 py-1.5 rounded-xl text-xs font-black bg-green-600 hover:bg-green-500 a-text transition-colors disabled:opacity-50">
                 Approve
               </button>
             )}
             {a.status !== 'rejected' && (
               <button onClick={() => setStatus(a.id, 'rejected')} disabled={busyId === a.id}
-                className="px-3 py-1.5 rounded-xl text-xs font-black bg-white/10 hover:bg-red-500/80 text-white transition-colors disabled:opacity-50">
+                className="px-3 py-1.5 rounded-xl text-xs font-black bg-white/10 hover:bg-red-500/80 a-text transition-colors disabled:opacity-50">
                 {a.status === 'approved' ? 'Revoke' : 'Reject'}
               </button>
             )}
@@ -256,9 +256,9 @@ export function BingoDashAccounts() {
         )}
       </div>
       {isFac && (
-        <div className="flex items-center flex-wrap gap-2 mt-3 pt-3 border-t border-white/10">
-          <span className="text-xs text-gray-400 min-w-0 truncate">
-            Assisting <span className="text-white font-bold">{hostEmail}</span>
+        <div className="flex items-center flex-wrap gap-2 mt-3 pt-3 border-t a-border">
+          <span className="text-xs a-text-2 min-w-0 truncate">
+            Assisting <span className="a-text font-bold">{hostEmail}</span>
             {a.access_expires_at && (
               <span className={facExpired ? 'text-red-300' : ''}>
                 {' '}· {facExpired ? 'expired' : 'expires'} {fmtExpiry(a.access_expires_at)}
@@ -268,21 +268,21 @@ export function BingoDashAccounts() {
           <div className="flex gap-2 ml-auto flex-shrink-0">
             {!facExpired && (
               <button onClick={() => endFacilitatorAccess(a)} disabled={busyId === a.id}
-                className="px-3 py-1.5 rounded-xl text-xs font-black bg-white/10 hover:bg-red-500/80 text-white transition-colors disabled:opacity-50">
+                className="px-3 py-1.5 rounded-xl text-xs font-black bg-white/10 hover:bg-red-500/80 a-text transition-colors disabled:opacity-50">
                 End access now
               </button>
             )}
             <button onClick={() => removeFacilitator(a)} disabled={busyId === a.id}
               title="Turn this back into a normal account (no host, no expiry)"
-              className="px-3 py-1.5 rounded-xl text-xs font-bold text-white/80 border border-white/20 hover:bg-white/10 transition-colors disabled:opacity-50">
+              className="px-3 py-1.5 rounded-xl text-xs font-bold a-text border border-white/20 hover:bg-white/10 transition-colors disabled:opacity-50">
               Remove facilitator
             </button>
           </div>
         </div>
       )}
       {!isFac && a.role !== 'owner' && a.status === 'approved' && (
-        <div className="flex items-center flex-wrap gap-2 mt-3 pt-3 border-t border-white/10">
-          <span className="text-[11px] text-gray-500 font-bold uppercase tracking-widest mr-1">Games:</span>
+        <div className="flex items-center flex-wrap gap-2 mt-3 pt-3 border-t a-border">
+          <span className="text-[11px] a-text-3 font-bold uppercase tracking-widest mr-1">Games:</span>
           <GameToggle label="Bingo Dash" on={a.can_bingo} busy={busyId === a.id} onToggle={() => toggleGame(a, 'can_bingo')} />
           <GameToggle label="Flag Retrieval" on={a.can_flag} busy={busyId === a.id} onToggle={() => toggleGame(a, 'can_flag')} />
           <div className="flex gap-2 ml-auto">
@@ -292,48 +292,48 @@ export function BingoDashAccounts() {
             </button>
             <button onClick={() => provision(a)} disabled={busyId === a.id || !templateId}
               title={templateId ? 'Clone the template board into this account' : 'Pick a template board first'}
-              className="px-3 py-1.5 rounded-xl text-xs font-bold text-white/80 border border-white/20 hover:bg-white/10 transition-colors disabled:opacity-40">
+              className="px-3 py-1.5 rounded-xl text-xs font-bold a-text border border-white/20 hover:bg-white/10 transition-colors disabled:opacity-40">
               Give default board
             </button>
           </div>
         </div>
       )}
       {!isFac && a.role !== 'owner' && a.status === 'approved' && (
-        <div className="flex items-center flex-wrap gap-2 mt-3 pt-3 border-t border-white/10">
-          <span className="text-[11px] text-gray-500 font-bold uppercase tracking-widest mr-1">Plan:</span>
+        <div className="flex items-center flex-wrap gap-2 mt-3 pt-3 border-t a-border">
+          <span className="text-[11px] a-text-3 font-bold uppercase tracking-widest mr-1">Plan:</span>
           <select
             defaultValue={a.plan ?? 'trial'}
             onChange={e => void savePlan(a, { plan: e.target.value })}
-            className="px-3 py-1.5 rounded-xl bg-black/30 border-2 border-white/15 text-white text-xs focus:border-violet-500 outline-none">
+            className="px-3 py-1.5 rounded-xl bg-black/30 border-2 border-white/15 a-text text-xs focus:border-teal-500 outline-none">
             <option value="trial">Trial</option>
             <option value="standard">Standard</option>
             <option value="pro">Pro</option>
           </select>
-          <label className="flex items-center gap-1 text-[11px] text-gray-400 font-bold">
+          <label className="flex items-center gap-1 text-[11px] a-text-2 font-bold">
             Boards
             <input type="number" min={1} defaultValue={a.max_boards ?? 3}
               onBlur={e => void savePlan(a, { max_boards: Number(e.target.value) })}
-              className="w-16 px-2 py-1.5 rounded-xl bg-black/30 border-2 border-white/15 text-white text-xs focus:border-violet-500 outline-none" />
+              className="w-16 px-2 py-1.5 rounded-xl bg-black/30 border-2 border-white/15 a-text text-xs focus:border-teal-500 outline-none" />
           </label>
-          <label className="flex items-center gap-1 text-[11px] text-gray-400 font-bold">
+          <label className="flex items-center gap-1 text-[11px] a-text-2 font-bold">
             Teams / board
             <input type="number" min={1} defaultValue={a.max_teams_per_board ?? 20}
               onBlur={e => void savePlan(a, { max_teams_per_board: Number(e.target.value) })}
-              className="w-16 px-2 py-1.5 rounded-xl bg-black/30 border-2 border-white/15 text-white text-xs focus:border-violet-500 outline-none" />
+              className="w-16 px-2 py-1.5 rounded-xl bg-black/30 border-2 border-white/15 a-text text-xs focus:border-teal-500 outline-none" />
           </label>
           {a.company_name && (
-            <span className="text-[11px] text-gray-500 ml-auto">{a.company_name}</span>
+            <span className="text-[11px] a-text-3 ml-auto">{a.company_name}</span>
           )}
         </div>
       )}
       {!isFac && a.role !== 'owner' && facForId === a.id && (
-        <div className="mt-3 pt-3 border-t border-white/10 flex flex-col gap-2">
-          <p className="text-[11px] text-gray-500 font-bold uppercase tracking-widest">
+        <div className="mt-3 pt-3 border-t a-border flex flex-col gap-2">
+          <p className="text-[11px] a-text-3 font-bold uppercase tracking-widest">
             Temporary event helper — edits the host's boards, auto-expires
           </p>
           <div className="flex flex-wrap items-center gap-2">
             <select value={facHost} onChange={e => setFacHost(e.target.value)}
-              className="flex-1 min-w-[160px] px-3 py-2 rounded-xl bg-black/30 border-2 border-white/15 text-white text-sm focus:border-sky-500 outline-none transition-colors">
+              className="flex-1 min-w-[160px] px-3 py-2 rounded-xl bg-black/30 border-2 border-white/15 a-text text-sm focus:border-sky-500 outline-none transition-colors">
               {hostOptions.filter(h => h.id !== a.id).map(h => (
                 <option key={h.id} value={h.id}>
                   {h.role === 'owner' ? `You (${h.email ?? 'main account'})` : h.email ?? h.id}
@@ -341,15 +341,15 @@ export function BingoDashAccounts() {
               ))}
             </select>
             <select value={facHours} onChange={e => setFacHours(Number(e.target.value))}
-              className="px-3 py-2 rounded-xl bg-black/30 border-2 border-white/15 text-white text-sm focus:border-sky-500 outline-none transition-colors">
+              className="px-3 py-2 rounded-xl bg-black/30 border-2 border-white/15 a-text text-sm focus:border-sky-500 outline-none transition-colors">
               {FACILITATOR_DURATIONS.map(d => <option key={d.hours} value={d.hours}>{d.label}</option>)}
             </select>
             <button onClick={() => makeFacilitator(a)} disabled={busyId === a.id || !facHost}
-              className="px-4 py-2 rounded-xl text-xs font-black bg-sky-600 hover:bg-sky-500 text-white transition-colors disabled:opacity-50">
+              className="px-4 py-2 rounded-xl text-xs font-black bg-sky-600 hover:bg-sky-500 a-text transition-colors disabled:opacity-50">
               Grant access
             </button>
             <button onClick={() => setFacForId(null)}
-              className="px-3 py-2 rounded-xl text-xs font-bold text-white/60 hover:bg-white/10 transition-colors">
+              className="px-3 py-2 rounded-xl text-xs font-bold a-text-2 hover:bg-white/10 transition-colors">
               Cancel
             </button>
           </div>
@@ -360,34 +360,34 @@ export function BingoDashAccounts() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 px-6 py-10">
+    <div className="min-h-screen a-bg px-6 py-10">
       <div className="max-w-2xl mx-auto">
         <div className="flex items-center justify-between gap-4 mb-8">
           <div>
-            <p className="text-purple-400 text-xs font-black uppercase tracking-[0.3em]">Bingo Dash</p>
-            <h1 className="text-white text-4xl font-black tracking-tight mt-1">Accounts</h1>
+            <p className="text-teal-400 text-xs font-black uppercase tracking-[0.3em]">Bingo Dash</p>
+            <h1 className="a-text text-4xl font-black tracking-tight mt-1">Accounts</h1>
           </div>
           <button onClick={() => navigate('/bingo-dash/admin')}
-            className="px-4 py-2 rounded-2xl text-white/80 font-bold text-sm border border-white/20 hover:bg-white/10 transition-colors">
+            className="px-4 py-2 rounded-2xl a-text font-bold text-sm border border-white/20 hover:bg-white/10 transition-colors">
             ← Admin
           </button>
         </div>
 
         {loading ? (
-          <p className="text-gray-400 animate-pulse">Loading…</p>
+          <p className="a-text-2 animate-pulse">Loading…</p>
         ) : (
           <div className="flex flex-col gap-8">
             <FacilitatorSessions />
 
-            <section className="px-4 py-4 rounded-2xl bg-white/5 border border-white/10">
-              <h2 className="text-white text-sm font-black uppercase tracking-widest mb-2">Client sign-up link</h2>
-              <p className="text-gray-500 text-xs mb-3">
-                For a <b className="text-gray-400">client renting the app</b>, not your crew — this gives them their own
+            <section className="px-4 py-4 rounded-2xl a-surface-2 border a-border">
+              <h2 className="a-text text-sm font-black uppercase tracking-widest mb-2">Client sign-up link</h2>
+              <p className="a-text-3 text-xs mb-3">
+                For a <b className="a-text-2">client renting the app</b>, not your crew — this gives them their own
                 separate boards. They sign up with email or Google, then appear under Pending for your approval.
-                Approving here does <b className="text-gray-400">not</b> let them see your event.
+                Approving here does <b className="a-text-2">not</b> let them see your event.
               </p>
               <div className="flex items-center gap-2">
-                <code className="flex-1 min-w-0 truncate px-4 py-3 rounded-2xl bg-black/30 border-2 border-white/15 text-gray-300 text-sm">
+                <code className="flex-1 min-w-0 truncate px-4 py-3 rounded-2xl bg-black/30 border-2 border-white/15 a-text-2 text-sm">
                   {inviteUrl}
                 </code>
                 <button
@@ -396,21 +396,21 @@ export function BingoDashAccounts() {
                     setCopiedInvite(true)
                     setTimeout(() => setCopiedInvite(false), 1500)
                   }}
-                  className="px-4 py-3 rounded-2xl text-sm font-black bg-purple-600 hover:bg-purple-500 text-white transition-colors flex-shrink-0">
+                  className="px-4 py-3 rounded-2xl text-sm font-black bg-teal-600 hover:bg-teal-500 a-text transition-colors flex-shrink-0">
                   {copiedInvite ? '✓ Copied' : 'Copy'}
                 </button>
               </div>
             </section>
 
-            <section className="px-4 py-4 rounded-2xl bg-white/5 border border-white/10">
-              <h2 className="text-white text-sm font-black uppercase tracking-widest mb-2">Default board template</h2>
-              <p className="text-gray-500 text-xs mb-3">
+            <section className="px-4 py-4 rounded-2xl a-surface-2 border a-border">
+              <h2 className="a-text text-sm font-black uppercase tracking-widest mb-2">Default board template</h2>
+              <p className="a-text-3 text-xs mb-3">
                 New accounts get an independent copy of this board (cards, instructions, photos and links included) the moment you approve them.
               </p>
               <select
                 value={templateId ?? ''}
                 onChange={e => saveTemplate(e.target.value)}
-                className="w-full px-4 py-3 rounded-2xl bg-black/30 border-2 border-white/15 text-white focus:border-purple-500 outline-none transition-colors">
+                className="w-full px-4 py-3 rounded-2xl bg-black/30 border-2 border-white/15 a-text focus:border-teal-500 outline-none transition-colors">
                 <option value="">— No template (accounts start empty) —</option>
                 {boards.map(b => <option key={b.id} value={b.id}>{b.name}</option>)}
               </select>
@@ -419,15 +419,15 @@ export function BingoDashAccounts() {
             {notice && <p className="text-amber-300 text-sm font-medium">{notice}</p>}
 
             <section>
-              <h2 className="text-white text-sm font-black uppercase tracking-widest mb-3">
+              <h2 className="a-text text-sm font-black uppercase tracking-widest mb-3">
                 Pending {pending.length > 0 && <span className="text-amber-400">({pending.length})</span>}
               </h2>
               {pending.length === 0
-                ? <p className="text-gray-500 text-sm">No one is waiting for approval.</p>
+                ? <p className="a-text-3 text-sm">No one is waiting for approval.</p>
                 : <div className="flex flex-col gap-2">{pending.map(a => <Row key={a.id} a={a} />)}</div>}
             </section>
             <section>
-              <h2 className="text-white text-sm font-black uppercase tracking-widest mb-3">All accounts</h2>
+              <h2 className="a-text text-sm font-black uppercase tracking-widest mb-3">All accounts</h2>
               <div className="flex flex-col gap-2">{others.map(a => <Row key={a.id} a={a} />)}</div>
             </section>
           </div>

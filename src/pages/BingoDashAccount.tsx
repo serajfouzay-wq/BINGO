@@ -60,8 +60,8 @@ export function BingoDashAccount() {
 
   if (!s) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-        <p className="text-gray-400 font-bold animate-pulse">Loading...</p>
+      <div className="min-h-screen a-bg flex items-center justify-center">
+        <p className="a-text-2 font-bold animate-pulse">Loading...</p>
       </div>
     )
   }
@@ -70,24 +70,24 @@ export function BingoDashAccount() {
   const expired = s.plan_expires_at && new Date(s.plan_expires_at) < new Date()
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white px-4 py-8">
+    <div className="min-h-screen a-bg a-text px-4 py-8">
       <div className="max-w-2xl mx-auto">
         <div className="flex items-center justify-between mb-8">
           <div>
-            <p className="text-[10px] font-black uppercase tracking-widest text-violet-400">Bingo Dash</p>
+            <p className="text-[10px] font-black uppercase tracking-widest text-teal-400">Bingo Dash</p>
             <h1 className="text-3xl font-black">My account</h1>
           </div>
           <Link to="/bingo-dash/admin"
-                className="px-4 py-2 rounded-xl border border-white/20 text-sm font-bold hover:bg-white/5">
+                className="px-4 py-2 rounded-xl border border-white/20 text-sm font-bold hover:a-surface-2">
             ← Admin
           </Link>
         </div>
 
         {/* Plan + usage */}
-        <div className="rounded-3xl border-2 border-white/10 bg-white/5 p-6 mb-5">
+        <div className="rounded-3xl border-2 a-border a-surface-2 p-6 mb-5">
           <div className="flex items-start justify-between mb-4">
             <div>
-              <p className="text-[10px] font-black uppercase tracking-widest text-white/40">Plan</p>
+              <p className="text-[10px] font-black uppercase tracking-widest a-text-3">Plan</p>
               <p className="text-2xl font-black capitalize">{s.plan}</p>
             </div>
             <span className={`px-3 py-1 rounded-full text-xs font-black uppercase ${
@@ -110,33 +110,33 @@ export function BingoDashAccount() {
           </div>
 
           {!isOwner && (
-            <p className="text-white/40 text-xs mt-4">
+            <p className="a-text-3 text-xs mt-4">
               Need more boards or teams? Ask the organiser to raise your limits.
             </p>
           )}
         </div>
 
         {/* Profile */}
-        <div className="rounded-3xl border-2 border-white/10 bg-white/5 p-6">
+        <div className="rounded-3xl border-2 a-border a-surface-2 p-6">
           <h2 className="text-lg font-black mb-4">Your details</h2>
           <Field label="Company" value={company} onChange={setCompany} placeholder="Acme Sdn Bhd" />
           <Field label="Contact name" value={contact} onChange={setContact} placeholder="Full name" />
           <Field label="Phone" value={phone} onChange={setPhone} placeholder="+60 12 345 6789" />
-          <p className="text-white/40 text-xs mb-4">Sign-in email: {s.email ?? '—'}</p>
+          <p className="a-text-3 text-xs mb-4">Sign-in email: {s.email ?? '—'}</p>
           <button onClick={() => void save()} disabled={saving}
-                  className="w-full py-3 rounded-2xl bg-violet-500 font-black uppercase tracking-wide active:scale-95 transition-transform disabled:opacity-50">
+                  className="w-full py-3 rounded-2xl bg-teal-500 font-black uppercase tracking-wide active:scale-95 transition-transform disabled:opacity-50">
             {saving ? 'Saving...' : 'Save details'}
           </button>
-          {msg && <p className="text-center text-sm mt-3 text-white/60">{msg}</p>}
+          {msg && <p className="text-center text-sm mt-3 a-text-2">{msg}</p>}
         </div>
 
         <div className="mt-5 flex gap-3">
           <Link to="/bingo-dash/crew"
-                className="flex-1 py-3 rounded-2xl border border-white/20 text-center font-bold text-sm hover:bg-white/5">
+                className="flex-1 py-3 rounded-2xl border border-white/20 text-center font-bold text-sm hover:a-surface-2">
             👥 Crew passes
           </Link>
           <Link to="/bingo-dash/admin"
-                className="flex-1 py-3 rounded-2xl border border-white/20 text-center font-bold text-sm hover:bg-white/5">
+                className="flex-1 py-3 rounded-2xl border border-white/20 text-center font-bold text-sm hover:a-surface-2">
             🎯 My boards
           </Link>
         </div>
@@ -147,10 +147,10 @@ export function BingoDashAccount() {
 
 function Stat({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="rounded-2xl bg-black/30 border border-white/10 p-3">
-      <p className="text-[9px] font-black uppercase tracking-widest text-white/40">{label}</p>
+    <div className="rounded-2xl bg-black/30 border a-border p-3">
+      <p className="text-[9px] font-black uppercase tracking-widest a-text-3">{label}</p>
       <p className="text-xl font-black mt-1">{value}</p>
-      {sub && <p className="text-[10px] text-white/40 mt-0.5">{sub}</p>}
+      {sub && <p className="text-[10px] a-text-3 mt-0.5">{sub}</p>}
     </div>
   )
 }
@@ -160,12 +160,12 @@ function Field({ label, value, onChange, placeholder }: {
 }) {
   return (
     <label className="block mb-3">
-      <span className="text-[10px] font-black uppercase tracking-widest text-white/40">{label}</span>
+      <span className="text-[10px] font-black uppercase tracking-widest a-text-3">{label}</span>
       <input
         value={value}
         onChange={e => onChange(e.target.value)}
         placeholder={placeholder}
-        className="mt-1 w-full px-4 py-3 rounded-2xl border-2 border-white/15 bg-white/5 text-white placeholder-white/25 focus:outline-none focus:border-violet-400/60"
+        className="mt-1 w-full px-4 py-3 rounded-2xl border-2 border-white/15 a-surface-2 a-text placeholder-white/25 focus:outline-none focus:border-teal-400/60"
       />
     </label>
   )
