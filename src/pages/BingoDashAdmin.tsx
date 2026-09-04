@@ -12,7 +12,8 @@ import { SCOREBOARD_THEMES, getScoreboardTheme } from '../lib/scoreboardThemes'
 import { Menu, MenuItem, MenuDivider } from '../components/AdminHeader'
 import { AdminSection } from '../components/AdminSection'
 import { AdminSidebar, type AdminView } from '../components/AdminSidebar'
-import { activeFaces, faceName, faceColor, slotFor, normaliseFaceCount } from '../lib/cubeFaces'
+import { activeFaces, faceName, faceColor, slotFor, normaliseFaceCount, TILES_PER_FACE } from '../lib/cubeFaces'
+import { CubeBoard } from '../components/CubeBoard'
 import { RunEventPanel, Step } from '../components/RunEventPanel'
 import { CONTEST_GAMES, getContestGame } from '../lib/contestGames'
 import { duelBonusByTeam } from '../hooks/useBingoDuels'
@@ -470,6 +471,8 @@ function boardWriteFailureMessage(dbMessage?: string): string {
 }
 
 // ── Main component ─────────────────────────────────────────────────────────────
+const emptySlots = new Set<number>()
+
 export function BingoDashAdmin() {
   const navigate = useNavigate()
   const { account, isOwner, workingOwnerValue, signOut } = useBingoAuth()
@@ -584,6 +587,10 @@ export function BingoDashAdmin() {
   // Which cube face the grid editor is showing. Faces beyond the board's
   // face_count are not offered, so a 1-face board behaves exactly as before.
   const [editFace, setEditFace] = useState(0)
+  // Flat stays the default: dropping a card onto a rotating face is harder
+  // than dropping it on a grid. Cube view is for reading the shape of a
+  // multi-face board, not for building it.
+  const [editView, setEditView] = useState<'flat' | 'cube'>('flat')
   const [submissionStatusFilter, setSubmissionStatusFilter] = useState<'pending' | 'approved' | 'rejected' | 'all'>('pending')
   const [submissionBoardFilter, setSubmissionBoardFilter] = useState<'current' | 'all'>('all')
 
@@ -2338,7 +2345,33 @@ export function BingoDashAdmin() {
                     })}
                   </div>
                 )}
+
+                {normaliseFaceCount(currentBoard?.face_count) > 1 && (
+                  <div className="flex gap-1 mb-3 p-1 rounded-xl w-fit" style={{ background: 'var(--a-surface-2)' }}>
+                    {(['flat', 'cube'] as const).map(v => (
+                      <button key={v} onClick={() => setEditView(v)}
+                        className={`px-3 py-1.5 rounded-lg text-xs font-black transition-colors ${editView === v ? 'text-white' : 'a-text-2'}`}
+                        style={editView === v ? { background: 'var(--a-brand)' } : undefined}>
+                        {v === 'flat' ? '\u25a6 Flat' : '\ud83e\uddca Cube'}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {editView === 'cube' && normaliseFaceCount(currentBoard?.face_count) > 1 && (
+                  <div className="rounded-2xl p-4 mb-3" style={{ background: '#0a1414' }}>
+                    <CubeBoard
+                      size={280}
+                      completedSlots={emptySlots}
+                      faces={activeFaces(currentBoard?.face_count).map(f =>
+                        Array.from({ length: TILES_PER_FACE }, (_, i) => gridSlots[f * TILES_PER_FACE + i] ?? null))}
+                      onTileClick={slot => { setEditFace(Math.floor(slot / TILES_PER_FACE)); setEditView('flat') }}
+                    />
+                  </div>
+                )}
+
                 <div
+                  hidden={editView === 'cube' && normaliseFaceCount(currentBoard?.face_count) > 1}
                   className="grid grid-cols-5 gap-1.5"
                   style={{ width: 'min(380px, calc(100vw - 80px))' }}
                 >
