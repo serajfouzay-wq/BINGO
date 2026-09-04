@@ -146,7 +146,7 @@ function ColorPicker({
           value={colorName}
           onChange={e => onNameChange(e.target.value)}
           placeholder="e.g. Blue"
-          className="w-full px-3 py-2 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+          className="w-full px-3 py-2 rounded-lg border a-border text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
         />
       </div>
       <div>
@@ -165,7 +165,7 @@ function ColorPicker({
         </div>
         <div className="flex items-center gap-2">
           <input type="color" value={hex} onChange={e => onHexChange(e.target.value)} className="w-9 h-9 rounded cursor-pointer" />
-          <input type="text" value={hex} onChange={e => onHexChange(e.target.value)} className="px-3 py-2 rounded-lg border border-gray-300 font-mono text-sm w-28" />
+          <input type="text" value={hex} onChange={e => onHexChange(e.target.value)} className="px-3 py-2 rounded-lg border a-border font-mono text-sm w-28" />
         </div>
       </div>
     </div>
@@ -219,7 +219,7 @@ function BoardTile({
     >
       {/* Drag-over highlight */}
       {isDragOver && (
-        <div className="absolute inset-0 bg-white/30 z-30 rounded-lg pointer-events-none" />
+        <div className="absolute inset-0 a-surface/30 z-30 rounded-lg pointer-events-none" />
       )}
 
       {/* Category badge */}
@@ -338,7 +338,7 @@ function CategoryGroupBlock({
           </button>
         )}
         <span className="text-xs a-text-3 font-medium">{group.tasks.length}</span>
-        <div className="flex-1 h-px bg-white/10" />
+        <div className="flex-1 h-px a-surface/10" />
         <div className="flex items-center gap-1.5 flex-shrink-0">
           <span className="text-xs a-text-3">color for all:</span>
           <input
@@ -415,24 +415,24 @@ function CategoryGroupBlock({
             </div>
             <div className="px-3 pb-3 flex flex-wrap gap-1.5">
               <button onClick={() => navigate(`/bingo-dash/admin/task/${task.id}`)}
-                className="px-3 py-1.5 bg-white/20 rounded-lg a-text text-xs font-bold hover:bg-white/30 transition-colors">
+                className="px-3 py-1.5 a-surface/20 rounded-lg a-text text-xs font-bold hover:a-surface/30 transition-colors">
                 Edit
               </button>
               <button onClick={() => setQrTask(task)}
-                className="px-3 py-1.5 bg-white/20 rounded-lg a-text text-xs font-bold hover:bg-white/30 transition-colors">
+                className="px-3 py-1.5 a-surface/20 rounded-lg a-text text-xs font-bold hover:a-surface/30 transition-colors">
                 QR
               </button>
               <button onClick={() => copyLink(task.id)}
-                className="px-3 py-1.5 bg-white/20 rounded-lg a-text text-xs font-bold hover:bg-white/30 transition-colors">
+                className="px-3 py-1.5 a-surface/20 rounded-lg a-text text-xs font-bold hover:a-surface/30 transition-colors">
                 {copiedId === task.id ? '✓' : '🔗'}
               </button>
               <button onClick={() => duplicateTask(task)}
-                className="px-3 py-1.5 bg-white/20 rounded-lg a-text text-xs font-bold hover:bg-white/30 transition-colors"
+                className="px-3 py-1.5 a-surface/20 rounded-lg a-text text-xs font-bold hover:a-surface/30 transition-colors"
                 title="Duplicate this card in this section">
                 ⎘ Copy
               </button>
               <button onClick={() => openTileEdit(task)}
-                className="px-3 py-1.5 bg-white/20 rounded-lg a-text text-xs font-bold hover:bg-white/30 transition-colors"
+                className="px-3 py-1.5 a-surface/20 rounded-lg a-text text-xs font-bold hover:a-surface/30 transition-colors"
                 title="Move to another section or category">
                 Move
               </button>
@@ -1933,7 +1933,7 @@ export function BingoDashAdmin() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen a-surface-2 flex items-center justify-center">
         <p className="a-text-2">Loading...</p>
       </div>
     )
@@ -1970,7 +1970,7 @@ export function BingoDashAdmin() {
             <div className="hidden md:flex items-center gap-2.5 px-3 py-1.5 rounded-xl a-surface-2 border a-border mr-2">
               <span className="text-sm font-black text-teal-600">{scopedTasks.length}</span>
               <span className="text-[10px] a-text-3 uppercase tracking-wider">cards</span>
-              <span className="w-px h-3.5 bg-white/10" />
+              <span className="w-px h-3.5 a-surface/10" />
               <span className="text-sm font-black text-emerald-300">{scopedTeams.length}</span>
               <span className="text-[10px] a-text-3 uppercase tracking-wider">teams</span>
             </div>
@@ -2046,7 +2046,7 @@ export function BingoDashAdmin() {
                 className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-sm font-bold transition-all flex-shrink-0 ${
                   isActive
                     ? 'bg-teal-600 a-text shadow-lg shadow-teal-100/50'
-                    : 'a-text-2 hover:a-text hover:bg-white/10 border a-border'
+                    : 'a-text-2 hover:a-text hover:a-surface/10 border a-border'
                 }`}
               >
                 {s.name}
@@ -2188,7 +2188,7 @@ export function BingoDashAdmin() {
                 </button>
               )}
               <button onClick={resetTimer} disabled={timerSaving}
-                className="px-7 py-2.5 bg-white/10 a-text rounded-xl font-bold hover:bg-white/20 transition-colors">
+                className="px-7 py-2.5 a-surface/10 a-text rounded-xl font-bold hover:a-surface/20 transition-colors">
                 ↺ Reset
               </button>
             </div>
@@ -2196,11 +2196,11 @@ export function BingoDashAdmin() {
             <div className="flex items-center gap-2 justify-center flex-wrap">
               {([-10, -5, -1] as const).map(d => (
                 <button key={d} onClick={() => adjustTimer(d)} disabled={timerSaving}
-                  className="px-3 py-2 bg-white/10 a-text rounded-lg text-sm font-bold hover:bg-white/20 transition-colors disabled:opacity-40 tabular-nums">
+                  className="px-3 py-2 a-surface/10 a-text rounded-lg text-sm font-bold hover:a-surface/20 transition-colors disabled:opacity-40 tabular-nums">
                   {d}m
                 </button>
               ))}
-              <div className="flex items-center gap-1 bg-white/10 rounded-lg px-2 py-1.5 mx-1">
+              <div className="flex items-center gap-1 a-surface/10 rounded-lg px-2 py-1.5 mx-1">
                 <input
                   type="number"
                   value={timerMinutesInput}
@@ -2217,7 +2217,7 @@ export function BingoDashAdmin() {
               </div>
               {([1, 5, 10] as const).map(d => (
                 <button key={d} onClick={() => adjustTimer(d)} disabled={timerSaving}
-                  className="px-3 py-2 bg-white/10 a-text rounded-lg text-sm font-bold hover:bg-white/20 transition-colors disabled:opacity-40 tabular-nums">
+                  className="px-3 py-2 a-surface/10 a-text rounded-lg text-sm font-bold hover:a-surface/20 transition-colors disabled:opacity-40 tabular-nums">
                   +{d}m
                 </button>
               ))}
@@ -2464,7 +2464,7 @@ export function BingoDashAdmin() {
                 <div className="flex gap-1.5 flex-wrap mb-2">
                   <button
                     onClick={() => setOffGridCategoryFilter('all')}
-                    className={`px-2 py-1 rounded-lg text-xs font-bold transition-colors ${offGridCategoryFilter === 'all' ? 'bg-teal-600 a-text' : 'bg-white/10 a-text-2 hover:bg-white/15 hover:a-text'}`}
+                    className={`px-2 py-1 rounded-lg text-xs font-bold transition-colors ${offGridCategoryFilter === 'all' ? 'bg-teal-600 a-text' : 'a-surface/10 a-text-2 hover:a-surface/15 hover:a-text'}`}
                   >
                     All
                   </button>
@@ -2472,7 +2472,7 @@ export function BingoDashAdmin() {
                     <button
                       key={cat}
                       onClick={() => setOffGridCategoryFilter(cat)}
-                      className={`px-2 py-1 rounded-lg text-xs font-bold transition-colors ${offGridCategoryFilter === cat ? 'bg-teal-600 a-text' : 'bg-white/10 a-text-2 hover:bg-white/15 hover:a-text'}`}
+                      className={`px-2 py-1 rounded-lg text-xs font-bold transition-colors ${offGridCategoryFilter === cat ? 'bg-teal-600 a-text' : 'a-surface/10 a-text-2 hover:a-surface/15 hover:a-text'}`}
                     >
                       {cat}
                     </button>
@@ -2505,7 +2505,7 @@ export function BingoDashAdmin() {
                           <div className="flex items-center gap-2 text-xs a-text-3 truncate">
                             {task.category && <span>{task.category}</span>}
                             {!isSameSection && (
-                              <span className="text-[10px] font-bold bg-white/10 a-text-2 border a-border rounded px-1.5 py-0.5">
+                              <span className="text-[10px] font-bold a-surface/10 a-text-2 border a-border rounded px-1.5 py-0.5">
                                 {sectionName}
                               </span>
                             )}
@@ -2557,7 +2557,7 @@ export function BingoDashAdmin() {
           <div className="flex gap-2 flex-wrap mb-5">
             <button
               onClick={() => setLibraryCompartmentFilter('all')}
-              className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${libraryCompartmentFilter === 'all' ? 'a-surface a-text' : 'bg-gray-100 a-text-3 hover:bg-gray-200'}`}
+              className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${libraryCompartmentFilter === 'all' ? 'a-surface a-text' : 'a-surface-2 a-text-3 hover:a-surface-2'}`}
             >
               All Compartments ({tasks.filter(t => isMineRow(t.owner_id)).length})
             </button>
@@ -2565,7 +2565,7 @@ export function BingoDashAdmin() {
               <button
                 key={s.id}
                 onClick={() => setLibraryCompartmentFilter(s.id)}
-                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${libraryCompartmentFilter === s.id ? 'bg-teal-600 a-text' : 'bg-gray-100 a-text-3 hover:bg-gray-200'}`}
+                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-colors ${libraryCompartmentFilter === s.id ? 'bg-teal-600 a-text' : 'a-surface-2 a-text-3 hover:a-surface-2'}`}
               >
                 {s.name} ({tasks.filter(t => t.section_id === s.id).length})
                 {activeBoardPointer === s.id && <span className="ml-1 text-green-400">●</span>}
@@ -2575,8 +2575,8 @@ export function BingoDashAdmin() {
 
           {/* New challenge form (scoped to current section) */}
           {showForm && (
-            <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
-              <h3 className="font-bold text-gray-900 mb-1">New Challenge</h3>
+            <div className="a-surface rounded-xl border a-border p-6 mb-6">
+              <h3 className="font-bold a-text mb-1">New Challenge</h3>
               {currentSectionId && (
                 <p className="text-xs a-text-2 mb-4">
                   Adding to: <span className="font-bold a-text-3">{sections.find(s => s.id === currentSectionId)?.name}</span>
@@ -2588,7 +2588,7 @@ export function BingoDashAdmin() {
                   <label className="block text-sm font-medium a-text-3 mb-1">Title</label>
                   <input type="text" value={formTitle} onChange={e => setFormTitle(e.target.value)}
                     placeholder="e.g. Water Challenge"
-                    className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500" autoFocus />
+                    className="w-full px-4 py-2 rounded-lg border a-border focus:outline-none focus:ring-2 focus:ring-teal-500" autoFocus />
                 </div>
                 <div className="flex gap-3">
                   <div className="flex-1">
@@ -2602,7 +2602,7 @@ export function BingoDashAdmin() {
                       }
                       setFormCategory(e.target.value)
                     }}
-                      className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white">
+                      className="w-full px-3 py-2 rounded-lg border a-border focus:outline-none focus:ring-2 focus:ring-teal-500 a-surface">
                       <option value="">— Uncategorized —</option>
                       {categories.filter(c => c.section_id === currentSectionId).map(c => (
                         <option key={c.id} value={c.name}>{c.name}</option>
@@ -2614,20 +2614,20 @@ export function BingoDashAdmin() {
                     <label className="block text-sm font-medium a-text-3 mb-1">Points</label>
                     <input type="number" value={formPoints} min={0}
                       onChange={e => setFormPoints(Math.max(0, parseInt(e.target.value) || 0))}
-                      className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500 text-center font-bold" />
+                      className="w-full px-3 py-2 rounded-lg border a-border focus:outline-none focus:ring-2 focus:ring-teal-500 text-center font-bold" />
                   </div>
                 </div>
                 <ColorPicker hex={formHex} colorName={formColor} onHexChange={setFormHex} onNameChange={setFormColor} />
                 {/* Type toggle */}
                 <div>
                   <label className="block text-sm font-medium a-text-3 mb-2">Card Type</label>
-                  <div className="flex rounded-lg overflow-hidden border border-gray-300">
+                  <div className="flex rounded-lg overflow-hidden border a-border">
                     <button type="button" onClick={() => setFormTaskType('standard')}
-                      className={`flex-1 py-2 text-sm font-bold transition-colors ${formTaskType === 'standard' ? 'bg-teal-600 a-text' : 'bg-white a-text-3 hover:bg-gray-50'}`}>
+                      className={`flex-1 py-2 text-sm font-bold transition-colors ${formTaskType === 'standard' ? 'bg-teal-600 a-text' : 'a-surface a-text-3 hover:a-surface-2'}`}>
                       Standard
                     </button>
                     <button type="button" onClick={() => setFormTaskType('answer')}
-                      className={`flex-1 py-2 text-sm font-bold transition-colors ${formTaskType === 'answer' ? 'bg-teal-600 a-text' : 'bg-white a-text-3 hover:bg-gray-50'}`}>
+                      className={`flex-1 py-2 text-sm font-bold transition-colors ${formTaskType === 'answer' ? 'bg-teal-600 a-text' : 'a-surface a-text-3 hover:a-surface-2'}`}>
                       Answer Input
                     </button>
                   </div>
@@ -2638,7 +2638,7 @@ export function BingoDashAdmin() {
                       <label className="block text-sm font-medium a-text-3 mb-1">Question / Prompt</label>
                       <input type="text" value={formAnswerQuestion} onChange={e => setFormAnswerQuestion(e.target.value)}
                         placeholder="e.g. What is the name of this landmark?"
-                        className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                        className="w-full px-4 py-2 rounded-lg border a-border focus:outline-none focus:ring-2 focus:ring-teal-500" />
                     </div>
                     <div>
                       <label className="block text-sm font-medium a-text-3 mb-1">Answer Template</label>
@@ -2646,7 +2646,7 @@ export function BingoDashAdmin() {
                       <textarea value={formAnswerText} onChange={e => setFormAnswerText(e.target.value)}
                         placeholder={"e.g.\nPETRONAS\nTWIN TOWERS"}
                         rows={3}
-                        className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500 font-mono text-sm resize-none" />
+                        className="w-full px-4 py-2 rounded-lg border a-border focus:outline-none focus:ring-2 focus:ring-teal-500 font-mono text-sm resize-none" />
                     </div>
                   </>
                 )}
@@ -2656,7 +2656,7 @@ export function BingoDashAdmin() {
                     {formSaving ? 'Creating...' : 'Create Challenge'}
                   </button>
                   <button onClick={() => setShowForm(false)}
-                    className="px-6 py-2 bg-gray-200 a-text-3 rounded-lg hover:bg-gray-300 text-sm transition-colors">
+                    className="px-6 py-2 a-surface-2 a-text-3 rounded-lg hover:bg-gray-300 text-sm transition-colors">
                     Cancel
                   </button>
                 </div>
@@ -2666,7 +2666,7 @@ export function BingoDashAdmin() {
 
           {/* Compartment > Category > Cards hierarchy */}
           {tasks.length === 0 ? (
-            <p className="a-text-2 text-center py-8 bg-white rounded-xl border border-gray-200">
+            <p className="a-text-2 text-center py-8 a-surface rounded-xl border a-border">
               No challenges yet. Click "Add Challenge" to create one.
             </p>
           ) : (
@@ -2685,7 +2685,7 @@ export function BingoDashAdmin() {
                       )}
                     </div>
                     <span className="text-xs a-text-3 font-medium">{totalTasks} cards</span>
-                    <div className="flex-1 h-px bg-white/10" />
+                    <div className="flex-1 h-px a-surface/10" />
                     {!section.foreign && (
                       <>
                         <button
@@ -2710,7 +2710,7 @@ export function BingoDashAdmin() {
 
                   {/* Category manager panel */}
                   {showCategoryManager === section.id && (
-                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-5">
+                    <div className="a-surface-2 border a-border rounded-xl p-4 mb-5">
                       <p className="text-xs font-black a-text-3 uppercase tracking-widest mb-3">Manage Categories</p>
                       <div className="flex flex-col gap-1.5 mb-3">
                         {categories.filter(c => c.section_id === section.id).length === 0 ? (
@@ -2719,14 +2719,14 @@ export function BingoDashAdmin() {
                           categories.filter(c => c.section_id === section.id).map(cat => {
                             const cardCount = tasks.filter(t => t.section_id === section.id && t.category === cat.name).length
                             return (
-                              <div key={cat.id} className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-1.5">
+                              <div key={cat.id} className="flex items-center gap-2 a-surface border a-border rounded-lg px-3 py-1.5">
                                 <input
                                   type="text"
                                   defaultValue={cat.name}
                                   key={`${cat.id}-${cat.name}`}
                                   onBlur={e => renameCategory(cat.id, section.id, e.target.value)}
                                   onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-                                  className="flex-1 text-sm font-medium text-gray-800 bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-teal-500 rounded px-1"
+                                  className="flex-1 text-sm font-medium a-text bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-teal-500 rounded px-1"
                                 />
                                 <span className="text-xs a-text-2 flex-shrink-0">{cardCount} card{cardCount !== 1 ? 's' : ''}</span>
                                 <button
@@ -2747,7 +2747,7 @@ export function BingoDashAdmin() {
                           onChange={e => setNewCategoryName(e.target.value)}
                           onKeyDown={e => { if (e.key === 'Enter') createCategory(section.id) }}
                           placeholder="New category name…"
-                          className="flex-1 px-3 py-1.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                          className="flex-1 px-3 py-1.5 rounded-lg border a-border text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                         />
                         <button
                           onClick={() => createCategory(section.id)}
@@ -2771,12 +2771,12 @@ export function BingoDashAdmin() {
                           <div className="flex items-center gap-3 mb-3 pl-4">
                             <h3 className="text-xs font-black a-text-2 uppercase tracking-widest">{group.label}</h3>
                             <span className="text-xs a-text-2 font-medium">{group.tasks.length}</span>
-                            <div className="flex-1 h-px bg-gray-100" />
+                            <div className="flex-1 h-px a-surface-2" />
                             <div className="flex items-center gap-1.5 flex-shrink-0">
                               <span className="text-xs a-text-2">color for all:</span>
                               <input type="color" defaultValue={group.tasks[0]?.hex_code ?? '#3B82F6'}
                                 key={section.id + group.key + '-color'}
-                                className="w-7 h-7 rounded cursor-pointer border border-gray-200"
+                                className="w-7 h-7 rounded cursor-pointer border a-border"
                                 onChange={e => setBulkCategoryColor(group.key, e.target.value)}
                                 title={`Set color for all ${group.label} tasks`} />
                             </div>
@@ -2849,7 +2849,7 @@ export function BingoDashAdmin() {
                                       className={`mt-1.5 text-xs font-bold px-2 py-0.5 rounded-full transition-colors ${
                                         task.require_marshal
                                           ? 'bg-yellow-400/30 text-yellow-200 hover:bg-yellow-400/50'
-                                          : 'bg-white/10 a-text-3 hover:bg-white/20'
+                                          : 'a-surface/10 a-text-3 hover:a-surface/20'
                                       }`}
                                     >
                                       {task.require_marshal ? '🔒 Marshal ON' : '🔓 Marshal OFF'}
@@ -2872,7 +2872,7 @@ export function BingoDashAdmin() {
                                         className={`text-xs font-bold px-2 py-0.5 rounded-full transition-colors ${
                                           task.is_contest
                                             ? 'bg-red-500/40 text-red-100 hover:bg-red-500/60'
-                                            : 'bg-white/10 a-text-3 hover:bg-white/20'
+                                            : 'a-surface/10 a-text-3 hover:a-surface/20'
                                         }`}
                                       >
                                         {task.is_contest ? '⚔️ Contending ON' : '⚔️ Contending OFF'}
@@ -2929,7 +2929,7 @@ export function BingoDashAdmin() {
                                 {section.foreign ? (
                                   <div className="px-3 pb-3">
                                     <button onClick={() => addCardFromLibrary(task)}
-                                      className="w-full px-3 py-1.5 bg-white/20 rounded-lg a-text text-xs font-bold hover:bg-white/30 transition-colors"
+                                      className="w-full px-3 py-1.5 a-surface/20 rounded-lg a-text text-xs font-bold hover:a-surface/30 transition-colors"
                                       title="Copies this card into your board — the original stays untouched">
                                       + Add to board
                                     </button>
@@ -2937,18 +2937,18 @@ export function BingoDashAdmin() {
                                 ) : (
                                 <div className="px-3 pb-3 flex flex-wrap gap-1.5">
                                   <button onClick={() => navigate(`/bingo-dash/admin/task/${task.id}`)}
-                                    className="px-3 py-1.5 bg-white/20 rounded-lg a-text text-xs font-bold hover:bg-white/30 transition-colors">Edit</button>
+                                    className="px-3 py-1.5 a-surface/20 rounded-lg a-text text-xs font-bold hover:a-surface/30 transition-colors">Edit</button>
                                   <button onClick={() => setQrTask(task)}
-                                    className="px-3 py-1.5 bg-white/20 rounded-lg a-text text-xs font-bold hover:bg-white/30 transition-colors">QR</button>
+                                    className="px-3 py-1.5 a-surface/20 rounded-lg a-text text-xs font-bold hover:a-surface/30 transition-colors">QR</button>
                                   <button onClick={() => copyLink(task.id)}
-                                    className="px-3 py-1.5 bg-white/20 rounded-lg a-text text-xs font-bold hover:bg-white/30 transition-colors">
+                                    className="px-3 py-1.5 a-surface/20 rounded-lg a-text text-xs font-bold hover:a-surface/30 transition-colors">
                                     {copiedId === task.id ? '✓' : '🔗'}
                                   </button>
                                   <button onClick={() => duplicateTask(task)}
-                                    className="px-3 py-1.5 bg-white/20 rounded-lg a-text text-xs font-bold hover:bg-white/30 transition-colors"
+                                    className="px-3 py-1.5 a-surface/20 rounded-lg a-text text-xs font-bold hover:a-surface/30 transition-colors"
                                     title="Duplicate this card">⎘ Copy</button>
                                   <button onClick={() => openTileEdit(task)}
-                                    className="px-3 py-1.5 bg-white/20 rounded-lg a-text text-xs font-bold hover:bg-white/30 transition-colors"
+                                    className="px-3 py-1.5 a-surface/20 rounded-lg a-text text-xs font-bold hover:a-surface/30 transition-colors"
                                     title="Move to another section">Move</button>
                                   <button onClick={() => deleteTask(task.id, task.title)}
                                     className="px-3 py-1.5 bg-red-500/30 rounded-lg a-text text-xs font-bold hover:bg-red-500/50 transition-colors">Delete</button>
@@ -3160,7 +3160,7 @@ export function BingoDashAdmin() {
               }`}
             >
               <span
-                className={`absolute top-1 left-1 w-6 h-6 rounded-full bg-white shadow transition-transform ${
+                className={`absolute top-1 left-1 w-6 h-6 rounded-full a-surface shadow transition-transform ${
                   currentBoard?.photo_submissions_enabled ?? true ? 'translate-x-6' : 'translate-x-0'
                 }`}
               />
@@ -3297,7 +3297,7 @@ export function BingoDashAdmin() {
                   <button
                     onClick={() => setShowChallengeSectionManager(v => !v)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors flex items-center gap-1.5 ${
-                      showChallengeSectionManager ? 'bg-teal-100/50 text-teal-600 border border-violet-700' : 'bg-white/10 a-text-2 hover:bg-white/15 hover:a-text'
+                      showChallengeSectionManager ? 'bg-teal-100/50 text-teal-600 border border-violet-700' : 'a-surface/10 a-text-2 hover:a-surface/15 hover:a-text'
                     }`}
                   >
                     ▤ Sections ({currentCS.length})
@@ -3321,7 +3321,7 @@ export function BingoDashAdmin() {
                         currentCS.map(cs => {
                           const assignedCats = currentCats.filter(c => c.challenge_section_id === cs.id)
                           return (
-                            <div key={cs.id} className="bg-white border border-gray-200 rounded-lg px-3 py-2">
+                            <div key={cs.id} className="a-surface border a-border rounded-lg px-3 py-2">
                               <div className="flex items-center gap-2 mb-1.5">
                                 {renamingCSId === cs.id ? (
                                   <input
@@ -3333,10 +3333,10 @@ export function BingoDashAdmin() {
                                       if (e.key === 'Enter') renameChallengeSection(cs.id, renamingCSName)
                                       if (e.key === 'Escape') setRenamingCSId(null)
                                     }}
-                                    className="flex-1 text-sm font-bold text-gray-800 bg-transparent border-b border-teal-500 focus:outline-none px-1"
+                                    className="flex-1 text-sm font-bold a-text bg-transparent border-b border-teal-500 focus:outline-none px-1"
                                   />
                                 ) : (
-                                  <span className="flex-1 text-sm font-bold text-gray-800">{cs.name}</span>
+                                  <span className="flex-1 text-sm font-bold a-text">{cs.name}</span>
                                 )}
                                 <button
                                   onClick={() => { setRenamingCSId(cs.id); setRenamingCSName(cs.name) }}
@@ -3361,7 +3361,7 @@ export function BingoDashAdmin() {
                                         className={`px-2 py-0.5 rounded text-xs font-bold transition-colors ${
                                           isAssigned
                                             ? 'bg-teal-600 a-text'
-                                            : 'bg-gray-100 a-text-3 hover:bg-violet-100 hover:text-violet-700'
+                                            : 'a-surface-2 a-text-3 hover:bg-violet-100 hover:text-violet-700'
                                         }`}
                                       >
                                         {cat.name}
@@ -3389,7 +3389,7 @@ export function BingoDashAdmin() {
                         onChange={e => setNewChallengeSectionName(e.target.value)}
                         onKeyDown={e => { if (e.key === 'Enter') createChallengeSection() }}
                         placeholder="New section name…"
-                        className="flex-1 px-3 py-1.5 rounded-lg border border-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
+                        className="flex-1 px-3 py-1.5 rounded-lg border a-border text-sm focus:outline-none focus:ring-2 focus:ring-teal-500"
                       />
                       <button
                         onClick={createChallengeSection}
@@ -3409,18 +3409,18 @@ export function BingoDashAdmin() {
           {allCategories.length > 0 && (
             <div className="flex gap-2 flex-wrap mb-5">
               <button onClick={() => setCategoryFilter('all')}
-                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${categoryFilter === 'all' ? 'bg-teal-600 a-text shadow-lg shadow-teal-100/60 ring-1 ring-teal-500/40' : 'bg-white/10 a-text-2 hover:bg-white/20 hover:a-text'}`}>
+                className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${categoryFilter === 'all' ? 'bg-teal-600 a-text shadow-lg shadow-teal-100/60 ring-1 ring-teal-500/40' : 'a-surface/10 a-text-2 hover:a-surface/20 hover:a-text'}`}>
                 All ({scopedTasks.length})
               </button>
               {allCategories.map(cat => (
                 <button key={cat} onClick={() => setCategoryFilter(cat)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${categoryFilter === cat ? 'bg-teal-600 a-text shadow-lg shadow-teal-100/60 ring-1 ring-teal-500/40' : 'bg-white/10 a-text-2 hover:bg-white/20 hover:a-text'}`}>
+                  className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${categoryFilter === cat ? 'bg-teal-600 a-text shadow-lg shadow-teal-100/60 ring-1 ring-teal-500/40' : 'a-surface/10 a-text-2 hover:a-surface/20 hover:a-text'}`}>
                   {cat} ({scopedTasks.filter(t => t.category === cat).length})
                 </button>
               ))}
               {scopedTasks.some(t => !t.category) && (
                 <button onClick={() => setCategoryFilter('__none__')}
-                  className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${categoryFilter === '__none__' ? 'bg-teal-600 a-text shadow-lg shadow-teal-100/60 ring-1 ring-teal-500/40' : 'bg-white/10 a-text-2 hover:bg-white/20 hover:a-text'}`}>
+                  className={`px-3 py-1.5 rounded-full text-xs font-bold transition-all ${categoryFilter === '__none__' ? 'bg-teal-600 a-text shadow-lg shadow-teal-100/60 ring-1 ring-teal-500/40' : 'a-surface/10 a-text-2 hover:a-surface/20 hover:a-text'}`}>
                   Uncategorized ({scopedTasks.filter(t => !t.category).length})
                 </button>
               )}
@@ -3429,14 +3429,14 @@ export function BingoDashAdmin() {
 
           {/* New challenge form */}
           {showForm && (
-            <div className="bg-white rounded-xl border border-gray-200 p-6 mb-6">
-              <h3 className="font-bold text-gray-900 mb-4">New Challenge</h3>
+            <div className="a-surface rounded-xl border a-border p-6 mb-6">
+              <h3 className="font-bold a-text mb-4">New Challenge</h3>
               <div className="flex flex-col gap-4">
                 <div>
                   <label className="block text-sm font-medium a-text-3 mb-1">Title</label>
                   <input type="text" value={formTitle} onChange={e => setFormTitle(e.target.value)}
                     placeholder="e.g. Water Challenge"
-                    className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500" autoFocus />
+                    className="w-full px-4 py-2 rounded-lg border a-border focus:outline-none focus:ring-2 focus:ring-teal-500" autoFocus />
                 </div>
                 <div className="flex gap-3">
                   <div className="flex-1">
@@ -3450,7 +3450,7 @@ export function BingoDashAdmin() {
                       }
                       setFormCategory(e.target.value)
                     }}
-                      className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white">
+                      className="w-full px-3 py-2 rounded-lg border a-border focus:outline-none focus:ring-2 focus:ring-teal-500 a-surface">
                       <option value="">— Uncategorized —</option>
                       {categories.filter(c => c.section_id === currentSectionId).map(c => (
                         <option key={c.id} value={c.name}>{c.name}</option>
@@ -3462,20 +3462,20 @@ export function BingoDashAdmin() {
                     <label className="block text-sm font-medium a-text-3 mb-1">Points</label>
                     <input type="number" value={formPoints} min={0}
                       onChange={e => setFormPoints(Math.max(0, parseInt(e.target.value) || 0))}
-                      className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500 text-center font-bold" />
+                      className="w-full px-3 py-2 rounded-lg border a-border focus:outline-none focus:ring-2 focus:ring-teal-500 text-center font-bold" />
                   </div>
                 </div>
                 <ColorPicker hex={formHex} colorName={formColor} onHexChange={setFormHex} onNameChange={setFormColor} />
                 {/* Type toggle */}
                 <div>
                   <label className="block text-sm font-medium a-text-3 mb-2">Card Type</label>
-                  <div className="flex rounded-lg overflow-hidden border border-gray-300">
+                  <div className="flex rounded-lg overflow-hidden border a-border">
                     <button type="button" onClick={() => setFormTaskType('standard')}
-                      className={`flex-1 py-2 text-sm font-bold transition-colors ${formTaskType === 'standard' ? 'bg-teal-600 a-text' : 'bg-white a-text-3 hover:bg-gray-50'}`}>
+                      className={`flex-1 py-2 text-sm font-bold transition-colors ${formTaskType === 'standard' ? 'bg-teal-600 a-text' : 'a-surface a-text-3 hover:a-surface-2'}`}>
                       Standard
                     </button>
                     <button type="button" onClick={() => setFormTaskType('answer')}
-                      className={`flex-1 py-2 text-sm font-bold transition-colors ${formTaskType === 'answer' ? 'bg-teal-600 a-text' : 'bg-white a-text-3 hover:bg-gray-50'}`}>
+                      className={`flex-1 py-2 text-sm font-bold transition-colors ${formTaskType === 'answer' ? 'bg-teal-600 a-text' : 'a-surface a-text-3 hover:a-surface-2'}`}>
                       Answer Input
                     </button>
                   </div>
@@ -3486,7 +3486,7 @@ export function BingoDashAdmin() {
                       <label className="block text-sm font-medium a-text-3 mb-1">Question / Prompt</label>
                       <input type="text" value={formAnswerQuestion} onChange={e => setFormAnswerQuestion(e.target.value)}
                         placeholder="e.g. What is the name of this landmark?"
-                        className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                        className="w-full px-4 py-2 rounded-lg border a-border focus:outline-none focus:ring-2 focus:ring-teal-500" />
                     </div>
                     <div>
                       <label className="block text-sm font-medium a-text-3 mb-1">Answer Template</label>
@@ -3494,7 +3494,7 @@ export function BingoDashAdmin() {
                       <textarea value={formAnswerText} onChange={e => setFormAnswerText(e.target.value)}
                         placeholder={"e.g.\nPETRONAS\nTWIN TOWERS"}
                         rows={3}
-                        className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500 font-mono text-sm resize-none" />
+                        className="w-full px-4 py-2 rounded-lg border a-border focus:outline-none focus:ring-2 focus:ring-teal-500 font-mono text-sm resize-none" />
                     </div>
                   </>
                 )}
@@ -3504,7 +3504,7 @@ export function BingoDashAdmin() {
                     {formSaving ? 'Creating...' : 'Create Challenge'}
                   </button>
                   <button onClick={() => setShowForm(false)}
-                    className="px-6 py-2 bg-gray-200 a-text-3 rounded-lg hover:bg-gray-300 text-sm transition-colors">
+                    className="px-6 py-2 a-surface-2 a-text-3 rounded-lg hover:bg-gray-300 text-sm transition-colors">
                     Cancel
                   </button>
                 </div>
@@ -3514,11 +3514,11 @@ export function BingoDashAdmin() {
 
           {/* Grouped gallery — Section → Category → Cards */}
           {scopedTasks.length === 0 ? (
-            <p className="a-text-2 text-center py-8 bg-white rounded-xl border border-gray-200">
+            <p className="a-text-2 text-center py-8 a-surface rounded-xl border a-border">
               No challenges yet. Click "Add Challenge" to create one.
             </p>
           ) : categoryFilter !== 'all' && groupedTasks.length === 0 ? (
-            <p className="a-text-2 text-center py-8 bg-white rounded-xl border border-gray-200">
+            <p className="a-text-2 text-center py-8 a-surface rounded-xl border a-border">
               No challenges in this category.
             </p>
           ) : categoryFilter !== 'all' ? (
@@ -3563,7 +3563,7 @@ export function BingoDashAdmin() {
                         <span className="text-xs a-text-3 font-medium">
                           {groups.reduce((n, g) => n + g.tasks.length, 0)} challenges
                         </span>
-                        <div className="flex-1 h-px bg-white/10" />
+                        <div className="flex-1 h-px a-surface/10" />
                       </div>
                     )}
                     {/* Categories within this challenge section */}
@@ -3619,7 +3619,7 @@ export function BingoDashAdmin() {
                     <span className="text-[10px] font-black text-green-400 bg-green-950/60 border border-green-800 px-1.5 py-0.5 rounded uppercase">Live</span>
                   )}
                   <span className="text-xs a-text-3 font-medium">{sectionTeams.length} group{sectionTeams.length !== 1 ? 's' : ''}</span>
-                  <div className="flex-1 h-px bg-white/10" />
+                  <div className="flex-1 h-px a-surface/10" />
                   <button
                     onClick={() => { setShowAllTeamsLink(true); setAllTeamsLinkCopied(false) }}
                     className="px-3 py-1.5 rounded-lg text-xs font-bold text-emerald-300 border border-emerald-500/30 bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors whitespace-nowrap"
@@ -3662,7 +3662,7 @@ export function BingoDashAdmin() {
                       const n = parseInt(prompt('How many groups to bulk create?', '16') ?? '', 10)
                       if (Number.isFinite(n) && n > 0) bulkCreateGroups(section.id, n)
                     }}
-                    className="px-4 py-2 rounded-lg text-sm font-bold a-text-2 bg-white/10 hover:bg-white/15 transition-colors"
+                    className="px-4 py-2 rounded-lg text-sm font-bold a-text-2 a-surface/10 hover:a-surface/15 transition-colors"
                   >
                     Bulk Create
                   </button>
@@ -3811,7 +3811,7 @@ export function BingoDashAdmin() {
                                         <button
                                           type="button"
                                           onClick={() => removeMember(m.id, m.name, team.name)}
-                                          className="w-3.5 h-3.5 rounded-full bg-white/10 hover:bg-red-500 hover:a-text a-text-3 text-[9px] font-bold leading-none flex items-center justify-center transition-colors opacity-0 group-hover/m:opacity-100"
+                                          className="w-3.5 h-3.5 rounded-full a-surface/10 hover:bg-red-500 hover:a-text a-text-3 text-[9px] font-bold leading-none flex items-center justify-center transition-colors opacity-0 group-hover/m:opacity-100"
                                           title={`Remove ${m.name}`}
                                         >
                                           &times;
@@ -3835,7 +3835,7 @@ export function BingoDashAdmin() {
                             {/* Progress + Bingos */}
                             <td className="px-3 py-2.5">
                               <div className="flex items-center gap-1.5 mb-0.5">
-                                <div className="flex-1 h-1 bg-white/10 rounded-full overflow-hidden">
+                                <div className="flex-1 h-1 a-surface/10 rounded-full overflow-hidden">
                                   <div className="h-full bg-green-500 transition-all" style={{ width: `${pct}%` }} />
                                 </div>
                                 <span className="text-[11px] a-text-3 font-mono whitespace-nowrap">
@@ -4137,11 +4137,11 @@ export function BingoDashAdmin() {
       {slotPickerIndex !== null && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4"
           onClick={() => setSlotPickerIndex(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm max-h-[80vh] flex flex-col animate-bounce-in"
+          <div className="a-surface rounded-2xl shadow-2xl w-full max-w-sm max-h-[80vh] flex flex-col animate-bounce-in"
             onClick={e => e.stopPropagation()}>
-            <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+            <div className="px-5 py-4 border-b a-border flex items-center justify-between">
               <div>
-                <h3 className="font-bold text-gray-900">Place a challenge</h3>
+                <h3 className="font-bold a-text">Place a challenge</h3>
                 <p className="text-xs a-text-2 mt-0.5">Slot {slotPickerIndex + 1} of 25</p>
               </div>
               <button onClick={() => setSlotPickerIndex(null)} className="a-text-2 hover:a-text-3 text-2xl font-light">&times;</button>
@@ -4150,12 +4150,12 @@ export function BingoDashAdmin() {
             {allCategories.length > 0 && (
               <div className="px-4 pt-3 flex gap-1.5 flex-wrap">
                 <button onClick={() => setSlotPickerFilter('all')}
-                  className={`px-2 py-0.5 rounded text-xs font-bold transition-colors ${slotPickerFilter === 'all' ? 'bg-teal-600 a-text' : 'bg-gray-100 a-text-3 hover:bg-gray-200'}`}>
+                  className={`px-2 py-0.5 rounded text-xs font-bold transition-colors ${slotPickerFilter === 'all' ? 'bg-teal-600 a-text' : 'a-surface-2 a-text-3 hover:a-surface-2'}`}>
                   All
                 </button>
                 {allCategories.map(cat => (
                   <button key={cat} onClick={() => setSlotPickerFilter(cat)}
-                    className={`px-2 py-0.5 rounded text-xs font-bold transition-colors ${slotPickerFilter === cat ? 'bg-teal-600 a-text' : 'bg-gray-100 a-text-3 hover:bg-gray-200'}`}>
+                    className={`px-2 py-0.5 rounded text-xs font-bold transition-colors ${slotPickerFilter === cat ? 'bg-teal-600 a-text' : 'a-surface-2 a-text-3 hover:a-surface-2'}`}>
                     {cat}
                   </button>
                 ))}
@@ -4174,7 +4174,7 @@ export function BingoDashAdmin() {
                 >
                   <div className="w-5 h-5 rounded-full flex-shrink-0" style={{ backgroundColor: task.hex_code }} />
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">{task.title}</p>
+                    <p className="text-sm font-medium a-text truncate">{task.title}</p>
                     {task.category && <p className="text-xs a-text-2 truncate">{task.category}</p>}
                   </div>
                   {(task.points ?? 0) > 0 && (
@@ -4191,7 +4191,7 @@ export function BingoDashAdmin() {
       {editingTile && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4"
           onClick={() => !tileSaving && setEditingTile(null)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-y-auto max-h-[90vh] animate-bounce-in"
+          <div className="a-surface rounded-2xl shadow-2xl w-full max-w-md overflow-y-auto max-h-[90vh] animate-bounce-in"
             onClick={e => e.stopPropagation()}>
             <div className="h-16 flex items-center px-6 gap-3" style={{ backgroundColor: tileHex }}>
               <div className="flex-1">
@@ -4204,12 +4204,12 @@ export function BingoDashAdmin() {
               <div>
                 <label className="block text-sm font-medium a-text-3 mb-1">Title</label>
                 <input type="text" value={tileTitle} onChange={e => setTileTitle(e.target.value)} autoFocus
-                  className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                  className="w-full px-4 py-2 rounded-lg border a-border focus:outline-none focus:ring-2 focus:ring-teal-500" />
               </div>
               <div>
                 <label className="block text-sm font-medium a-text-3 mb-1">Section</label>
                 <select value={tileSectionId} onChange={e => setTileSectionId(e.target.value)}
-                  className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white">
+                  className="w-full px-3 py-2 rounded-lg border a-border focus:outline-none focus:ring-2 focus:ring-teal-500 a-surface">
                   {myBoards.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
                 </select>
                 {editingTile && tileSectionId !== editingTile.section_id && (
@@ -4227,7 +4227,7 @@ export function BingoDashAdmin() {
                     }
                     setTileCategory(e.target.value)
                   }}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500 bg-white">
+                    className="w-full px-3 py-2 rounded-lg border a-border focus:outline-none focus:ring-2 focus:ring-teal-500 a-surface">
                     <option value="">— Uncategorized —</option>
                     {categories.filter(c => c.section_id === tileSectionId).map(c => (
                       <option key={c.id} value={c.name}>{c.name}</option>
@@ -4239,25 +4239,25 @@ export function BingoDashAdmin() {
                   <label className="block text-sm font-medium a-text-3 mb-1">Points</label>
                   <input type="number" value={tilePoints} min={0}
                     onChange={e => setTilePoints(Math.max(0, parseInt(e.target.value) || 0))}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500 text-center font-bold" />
+                    className="w-full px-3 py-2 rounded-lg border a-border focus:outline-none focus:ring-2 focus:ring-teal-500 text-center font-bold" />
                 </div>
               </div>
               <ColorPicker hex={tileHex} colorName={tileColor} onHexChange={setTileHex} onNameChange={setTileColor} />
               {/* Type toggle */}
               <div>
                 <label className="block text-sm font-medium a-text-3 mb-2">Card Type</label>
-                <div className="flex rounded-lg overflow-hidden border border-gray-300">
+                <div className="flex rounded-lg overflow-hidden border a-border">
                   <button
                     type="button"
                     onClick={() => setTileTaskType('standard')}
-                    className={`flex-1 py-2 text-sm font-bold transition-colors ${tileTaskType === 'standard' ? 'bg-teal-600 a-text' : 'bg-white a-text-3 hover:bg-gray-50'}`}
+                    className={`flex-1 py-2 text-sm font-bold transition-colors ${tileTaskType === 'standard' ? 'bg-teal-600 a-text' : 'a-surface a-text-3 hover:a-surface-2'}`}
                   >
                     Standard
                   </button>
                   <button
                     type="button"
                     onClick={() => setTileTaskType('answer')}
-                    className={`flex-1 py-2 text-sm font-bold transition-colors ${tileTaskType === 'answer' ? 'bg-teal-600 a-text' : 'bg-white a-text-3 hover:bg-gray-50'}`}
+                    className={`flex-1 py-2 text-sm font-bold transition-colors ${tileTaskType === 'answer' ? 'bg-teal-600 a-text' : 'a-surface a-text-3 hover:a-surface-2'}`}
                   >
                     Answer Input
                   </button>
@@ -4269,7 +4269,7 @@ export function BingoDashAdmin() {
                     <label className="block text-sm font-medium a-text-3 mb-1">Question / Prompt</label>
                     <input type="text" value={tileAnswerQuestion} onChange={e => setTileAnswerQuestion(e.target.value)}
                       placeholder="e.g. What is the name of this landmark?"
-                      className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500" />
+                      className="w-full px-4 py-2 rounded-lg border a-border focus:outline-none focus:ring-2 focus:ring-teal-500" />
                   </div>
                   <div>
                     <label className="block text-sm font-medium a-text-3 mb-1">Answer Template</label>
@@ -4277,7 +4277,7 @@ export function BingoDashAdmin() {
                     <textarea value={tileAnswerText} onChange={e => setTileAnswerText(e.target.value)}
                       placeholder={"e.g.\nPETRONAS\nTWIN TOWERS"}
                       rows={3}
-                      className="w-full px-4 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500 font-mono text-sm resize-none" />
+                      className="w-full px-4 py-2 rounded-lg border a-border focus:outline-none focus:ring-2 focus:ring-teal-500 font-mono text-sm resize-none" />
                   </div>
                 </>
               )}
@@ -4287,7 +4287,7 @@ export function BingoDashAdmin() {
                   {tileSaving ? 'Saving...' : 'Save Changes'}
                 </button>
                 <button onClick={() => setEditingTile(null)} disabled={tileSaving}
-                  className="px-5 py-2.5 bg-gray-100 a-text-3 rounded-xl font-bold hover:bg-gray-200 transition-colors">
+                  className="px-5 py-2.5 a-surface-2 a-text-3 rounded-xl font-bold hover:a-surface-2 transition-colors">
                   Cancel
                 </button>
               </div>
@@ -4301,13 +4301,13 @@ export function BingoDashAdmin() {
         <div className="fixed inset-0 bg-black flex items-center justify-center z-50 cursor-pointer" onClick={() => setQrTask(null)}>
           <button onClick={() => setQrTask(null)} className="absolute top-6 right-8 a-text-2 hover:a-text text-5xl font-light z-10">&times;</button>
           <div className="absolute top-6 left-0 right-0 text-center a-text-3 text-lg">Tap anywhere to go back</div>
-          <div className="bg-white rounded-3xl p-10 flex flex-col items-center gap-6 max-w-lg mx-4 cursor-default animate-bounce-in" onClick={e => e.stopPropagation()}>
+          <div className="a-surface rounded-3xl p-10 flex flex-col items-center gap-6 max-w-lg mx-4 cursor-default animate-bounce-in" onClick={e => e.stopPropagation()}>
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl" style={{ backgroundColor: qrTask.hex_code }} />
-              <h2 className="text-3xl font-black text-gray-900">{qrTask.title}</h2>
+              <h2 className="text-3xl font-black a-text">{qrTask.title}</h2>
             </div>
             <p className="a-text-2 font-medium uppercase tracking-wider text-sm">{qrTask.color} Challenge — Scan with phone camera</p>
-            <div className="bg-white p-4 rounded-2xl">
+            <div className="a-surface p-4 rounded-2xl">
               <QRCodeSVG value={`${window.location.origin}/bingo-dash/task/${qrTask.id}`} size={400} level="H" />
             </div>
             <p className="text-xs a-text-2 font-mono break-all text-center">
@@ -4323,17 +4323,17 @@ export function BingoDashAdmin() {
       {/* ── Import Modal ─────────────────────────────────────────────────────── */}
       {showImport && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4" onClick={() => { if (!importing) setShowImport(false) }}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col animate-bounce-in" onClick={e => e.stopPropagation()}>
-            <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+          <div className="a-surface rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col animate-bounce-in" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-5 border-b a-border flex items-center justify-between">
               <div>
-                <h2 className="text-xl font-bold text-gray-900">Import Challenges</h2>
+                <h2 className="text-xl font-bold a-text">Import Challenges</h2>
                 <p className="text-sm a-text-2 mt-0.5">Bulk-create tiles from JSON</p>
               </div>
               <button onClick={() => setShowImport(false)} className="a-text-2 hover:a-text-3 text-2xl font-light">&times;</button>
             </div>
             <div className="px-6 py-5 flex-1 overflow-y-auto flex flex-col gap-4">
-              <details className="bg-gray-50 rounded-xl overflow-hidden">
-                <summary className="px-4 py-3 text-sm font-medium a-text-3 cursor-pointer hover:bg-gray-100">JSON format reference ▾</summary>
+              <details className="a-surface-2 rounded-xl overflow-hidden">
+                <summary className="px-4 py-3 text-sm font-medium a-text-3 cursor-pointer hover:a-surface-2">JSON format reference ▾</summary>
                 <pre className="px-4 pb-4 text-xs a-text-3 leading-relaxed overflow-x-auto">{`[
   {
     "title": "Water Challenge",
@@ -4345,7 +4345,7 @@ export function BingoDashAdmin() {
               </details>
               <textarea value={importText} onChange={e => { setImportText(e.target.value); setImportPreview(null); setImportError('') }}
                 placeholder="Paste your JSON array here..."
-                className="w-full h-40 px-4 py-3 rounded-xl border border-gray-200 font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-teal-500"
+                className="w-full h-40 px-4 py-3 rounded-xl border a-border font-mono text-sm resize-none focus:outline-none focus:ring-2 focus:ring-teal-500"
                 disabled={importing} />
               {importError && (
                 <div className="flex items-start gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3">
@@ -4355,12 +4355,12 @@ export function BingoDashAdmin() {
               {importPreview && (
                 <div>
                   <p className="text-sm font-bold a-text-3 mb-2">Preview — {importPreview.length} challenge{importPreview.length !== 1 ? 's' : ''} to import:</p>
-                  <div className="border border-gray-200 rounded-xl overflow-hidden divide-y divide-gray-100">
+                  <div className="border a-border rounded-xl overflow-hidden divide-y divide-gray-100">
                     {importPreview.map((row, i) => (
                       <div key={i} className="flex items-center gap-3 px-4 py-3">
                         <div className="w-5 h-5 rounded-full flex-shrink-0" style={{ backgroundColor: row.hex_code }} />
                         <div className="flex-1 min-w-0">
-                          <p className="font-medium text-gray-900 text-sm truncate">{row.title}</p>
+                          <p className="font-medium a-text text-sm truncate">{row.title}</p>
                           <p className="text-xs a-text-2">{row.color}{row.clues.length > 0 ? ` · ${row.clues.length} clue${row.clues.length !== 1 ? 's' : ''}` : ''}</p>
                         </div>
                       </div>
@@ -4369,9 +4369,9 @@ export function BingoDashAdmin() {
                 </div>
               )}
             </div>
-            <div className="px-6 py-4 border-t border-gray-100 flex gap-3 justify-end">
+            <div className="px-6 py-4 border-t a-border flex gap-3 justify-end">
               <button onClick={() => setShowImport(false)} disabled={importing}
-                className="px-5 py-2 rounded-lg bg-gray-100 a-text-3 text-sm font-medium hover:bg-gray-200 transition-colors disabled:opacity-50">Cancel</button>
+                className="px-5 py-2 rounded-lg a-surface-2 a-text-3 text-sm font-medium hover:a-surface-2 transition-colors disabled:opacity-50">Cancel</button>
               {!importPreview ? (
                 <button onClick={handleImportPreview} disabled={!importText.trim()}
                   className="px-5 py-2 rounded-lg bg-teal-600 a-text text-sm font-bold hover:bg-violet-700 transition-colors disabled:opacity-50">Preview Import</button>
@@ -4390,11 +4390,11 @@ export function BingoDashAdmin() {
       {showSectionManager && (
         <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4"
           onClick={() => setShowSectionManager(false)}>
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-y-auto max-h-[90vh] animate-bounce-in"
+          <div className="a-surface rounded-2xl shadow-2xl w-full max-w-md overflow-y-auto max-h-[90vh] animate-bounce-in"
             onClick={e => e.stopPropagation()}>
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between">
+            <div className="px-6 py-4 border-b a-border flex items-center justify-between">
               <div>
-                <h3 className="text-lg font-bold text-gray-900">Sections</h3>
+                <h3 className="text-lg font-bold a-text">Sections</h3>
                 <p className="text-xs a-text-2 mt-0.5">Each section is an independent game at a different location.</p>
               </div>
               <button onClick={() => setShowSectionManager(false)} className="a-text-2 hover:a-text-3 text-2xl font-light">&times;</button>
@@ -4407,14 +4407,14 @@ export function BingoDashAdmin() {
                   onChange={e => setNewSectionName(e.target.value)}
                   onKeyDown={e => { if (e.key === 'Enter') createSection() }}
                   placeholder="New section name (e.g. Klang Hunt)"
-                  className="flex-1 px-3 py-2 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
+                  className="flex-1 px-3 py-2 rounded-lg border a-border focus:outline-none focus:ring-2 focus:ring-teal-500 text-sm"
                 />
                 <button onClick={() => createSection()} disabled={!newSectionName.trim()}
                   className="px-4 py-2 bg-teal-600 a-text rounded-lg text-sm font-bold hover:bg-violet-700 disabled:opacity-40">
                   Add
                 </button>
               </div>
-              <div className="divide-y divide-gray-100 border border-gray-200 rounded-lg">
+              <div className="divide-y divide-gray-100 border a-border rounded-lg">
                 {myBoards.map(s => {
                   const taskCount = tasks.filter(t => t.section_id === s.id).length
                   const teamCount = teams.filter(t => t.section_id === s.id).length
@@ -4427,7 +4427,7 @@ export function BingoDashAdmin() {
                           key={`${s.id}-${s.name}`}
                           onBlur={e => { if (e.target.value.trim() !== s.name) renameSection(s.id, e.target.value) }}
                           onKeyDown={e => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur() }}
-                          className="flex-1 px-2 py-1 rounded border border-transparent hover:border-gray-200 focus:border-teal-500 focus:outline-none text-sm font-medium bg-transparent"
+                          className="flex-1 px-2 py-1 rounded border border-transparent hover:a-border focus:border-teal-500 focus:outline-none text-sm font-medium bg-transparent"
                         />
                         <span className="text-xs a-text-2 flex-shrink-0">{taskCount} cards · {teamCount} teams</span>
                         <button onClick={() => deleteSection(s.id)}
@@ -4442,7 +4442,7 @@ export function BingoDashAdmin() {
                           className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-black transition-all ${
                             s.game_started
                               ? 'bg-green-500 a-text hover:bg-red-500'
-                              : 'bg-gray-200 a-text-3 hover:bg-green-500 hover:a-text'
+                              : 'a-surface-2 a-text-3 hover:bg-green-500 hover:a-text'
                           }`}
                         >
                           <span>{s.game_started ? '● LIVE' : '■ Locked'}</span>
@@ -4479,21 +4479,21 @@ export function BingoDashAdmin() {
         return (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4"
             onClick={() => setViewingTeam(null)}>
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col animate-bounce-in"
+            <div className="a-surface rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col animate-bounce-in"
               onClick={e => e.stopPropagation()}>
-              <div className="px-5 py-4 border-b border-gray-100 flex items-center justify-between">
+              <div className="px-5 py-4 border-b a-border flex items-center justify-between">
                 <div>
                   <p className="text-[10px] font-black text-teal-500 uppercase tracking-widest">Team Grid</p>
-                  <h3 className="font-black text-gray-900 text-lg">{team.name}</h3>
+                  <h3 className="font-black a-text text-lg">{team.name}</h3>
                 </div>
                 <button onClick={() => setViewingTeam(null)} className="a-text-2 hover:a-text-3 text-2xl font-light">&times;</button>
               </div>
 
               {/* Stats */}
-              <div className="px-5 py-3 border-b border-gray-100 grid grid-cols-3 gap-3">
+              <div className="px-5 py-3 border-b a-border grid grid-cols-3 gap-3">
                 <div className="text-center">
                   <p className="text-xs a-text-2 font-bold uppercase tracking-wider">Points</p>
-                  <p className="text-2xl font-black text-gray-900">{points}</p>
+                  <p className="text-2xl font-black a-text">{points}</p>
                 </div>
                 <div className="text-center">
                   <p className="text-xs a-text-2 font-bold uppercase tracking-wider">Bingos</p>
@@ -4513,7 +4513,7 @@ export function BingoDashAdmin() {
                   <div className="grid grid-cols-5 gap-1.5">
                     {slots.map((t, i) => {
                       if (!t) {
-                        return <div key={`e-${i}`} className="aspect-square rounded-lg bg-gray-50 border border-dashed border-gray-200" />
+                        return <div key={`e-${i}`} className="aspect-square rounded-lg a-surface-2 border border-dashed a-border" />
                       }
                       const isCompleted = completedIds.has(t.id)
                       const isScanned = !isCompleted && scannedIds.has(t.id)
@@ -4533,7 +4533,7 @@ export function BingoDashAdmin() {
                             {t.title}
                           </span>
                           {isCompleted && (
-                            <div className="absolute top-0.5 right-0.5 bg-white/90 rounded-full w-4 h-4 flex items-center justify-center">
+                            <div className="absolute top-0.5 right-0.5 a-surface/90 rounded-full w-4 h-4 flex items-center justify-center">
                               <span className="text-green-600 text-[10px] font-black">✓</span>
                             </div>
                           )}
@@ -4599,11 +4599,11 @@ export function BingoDashAdmin() {
         return (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4"
             onClick={() => setShowAllTeamsLink(false)}>
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md animate-bounce-in"
+            <div className="a-surface rounded-2xl shadow-2xl w-full max-w-md animate-bounce-in"
               onClick={e => e.stopPropagation()}>
-              <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+              <div className="px-6 py-5 border-b a-border flex items-center justify-between">
                 <div>
-                  <h3 className="text-lg font-bold text-gray-900">Live Teams Link</h3>
+                  <h3 className="text-lg font-bold a-text">Live Teams Link</h3>
                   <p className="text-xs a-text-2 mt-0.5">
                     For <span className="font-bold a-text-3">{currentSection?.name ?? 'this board'}</span>
                     <span className="a-text-2"> · </span>
@@ -4629,12 +4629,12 @@ export function BingoDashAdmin() {
                     </p>
                   </div>
 
-                  <div className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm">
+                  <div className="a-surface p-3 rounded-2xl border a-border shadow-sm">
                     <QRCodeSVG id="all-teams-qr-svg" value={url} size={260} level="H" />
                   </div>
 
                   <div className="w-full flex items-center gap-2">
-                    <div className="flex-1 px-3 py-2.5 bg-gray-50 rounded-lg text-xs font-mono a-text-3 break-all select-all border border-gray-200">
+                    <div className="flex-1 px-3 py-2.5 a-surface-2 rounded-lg text-xs font-mono a-text-3 break-all select-all border a-border">
                       {url}
                     </div>
                     <button onClick={handleCopy}
@@ -4675,11 +4675,11 @@ export function BingoDashAdmin() {
         return (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4"
             onClick={() => { if (!bonusSaving) setBonusTeam(null) }}>
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg animate-bounce-in flex flex-col max-h-[90vh]"
+            <div className="a-surface rounded-2xl shadow-2xl w-full max-w-lg animate-bounce-in flex flex-col max-h-[90vh]"
               onClick={e => e.stopPropagation()}>
-              <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between flex-shrink-0">
+              <div className="px-6 py-5 border-b a-border flex items-center justify-between flex-shrink-0">
                 <div>
-                  <h3 className="text-lg font-bold text-gray-900">Bonus Points</h3>
+                  <h3 className="text-lg font-bold a-text">Bonus Points</h3>
                   <p className="text-xs a-text-2 mt-0.5">
                     For <span className="font-bold a-text-3">{bonusTeam.name}</span> · one line per activity
                   </p>
@@ -4703,7 +4703,7 @@ export function BingoDashAdmin() {
                         autoFocus={idx === bonusDraft.length - 1 && item.label === ''}
                         placeholder="Activity name (e.g. Tug of War)"
                         onChange={e => setRow(idx, { label: e.target.value })}
-                        className="flex-1 px-3 py-2 rounded-lg border border-gray-200 focus:border-teal-500 focus:outline-none text-sm text-gray-900 bg-white"
+                        className="flex-1 px-3 py-2 rounded-lg border a-border focus:border-teal-500 focus:outline-none text-sm a-text a-surface"
                       />
                       <input
                         type="number"
@@ -4714,7 +4714,7 @@ export function BingoDashAdmin() {
                           setRow(idx, { points: Number.isFinite(n) ? n : 0 })
                         }}
                         onFocus={e => e.target.select()}
-                        className="w-20 px-2 py-2 rounded-lg border border-gray-200 focus:border-teal-500 focus:outline-none text-sm text-center font-mono text-gray-900 bg-white"
+                        className="w-20 px-2 py-2 rounded-lg border a-border focus:border-teal-500 focus:outline-none text-sm text-center font-mono a-text a-surface"
                       />
                       <button onClick={() => removeRow(idx)}
                         title="Remove this activity"
@@ -4725,18 +4725,18 @@ export function BingoDashAdmin() {
                   ))}
                 </div>
                 <button onClick={addRow}
-                  className="mt-3 w-full py-2.5 rounded-lg border border-dashed border-gray-300 a-text-3 text-sm font-bold hover:border-teal-500 hover:text-teal-600 transition-colors">
+                  className="mt-3 w-full py-2.5 rounded-lg border border-dashed a-border a-text-3 text-sm font-bold hover:border-teal-500 hover:text-teal-600 transition-colors">
                   + Add activity
                 </button>
               </div>
 
-              <div className="px-6 py-4 border-t border-gray-100 flex items-center justify-between flex-shrink-0">
+              <div className="px-6 py-4 border-t a-border flex items-center justify-between flex-shrink-0">
                 <div className="text-sm a-text-3">
                   Total bonus <span className="ml-1 font-mono font-black text-lg text-amber-600">{total > 0 ? `+${total}` : total}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <button onClick={() => { if (!bonusSaving) setBonusTeam(null) }}
-                    className="px-4 py-2 rounded-lg text-sm font-bold a-text-3 hover:bg-gray-100 transition-colors">
+                    className="px-4 py-2 rounded-lg text-sm font-bold a-text-3 hover:a-surface-2 transition-colors">
                     Cancel
                   </button>
                   <button onClick={saveBonus} disabled={bonusSaving}
@@ -4786,11 +4786,11 @@ export function BingoDashAdmin() {
         return (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4"
             onClick={() => setMembersLinkTeam(null)}>
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md animate-bounce-in"
+            <div className="a-surface rounded-2xl shadow-2xl w-full max-w-md animate-bounce-in"
               onClick={e => e.stopPropagation()}>
-              <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+              <div className="px-6 py-5 border-b a-border flex items-center justify-between">
                 <div>
-                  <h3 className="text-lg font-bold text-gray-900">Live Members Link</h3>
+                  <h3 className="text-lg font-bold a-text">Live Members Link</h3>
                   <p className="text-xs a-text-2 mt-0.5">
                     For <span className="font-bold a-text-3">{team.name}</span>
                     <span className="a-text-2"> · </span>
@@ -4809,12 +4809,12 @@ export function BingoDashAdmin() {
                   </p>
                 </div>
 
-                <div className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm">
+                <div className="a-surface p-3 rounded-2xl border a-border shadow-sm">
                   <QRCodeSVG id="team-members-qr-svg" value={url} size={260} level="H" />
                 </div>
 
                 <div className="w-full flex items-center gap-2">
-                  <div className="flex-1 px-3 py-2.5 bg-gray-50 rounded-lg text-xs font-mono a-text-3 break-all select-all border border-gray-200">
+                  <div className="flex-1 px-3 py-2.5 a-surface-2 rounded-lg text-xs font-mono a-text-3 break-all select-all border a-border">
                     {url}
                   </div>
                   <button onClick={handleCopy}
@@ -4882,11 +4882,11 @@ export function BingoDashAdmin() {
         return (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 px-4"
             onClick={() => setShowJoinLink(false)}>
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md animate-bounce-in"
+            <div className="a-surface rounded-2xl shadow-2xl w-full max-w-md animate-bounce-in"
               onClick={e => e.stopPropagation()}>
-              <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+              <div className="px-6 py-5 border-b a-border flex items-center justify-between">
                 <div>
-                  <h3 className="text-lg font-bold text-gray-900">Join Links</h3>
+                  <h3 className="text-lg font-bold a-text">Join Links</h3>
                   <p className="text-xs a-text-2 mt-0.5">
                     For <span className="font-bold a-text-3">{currentSection?.name ?? 'this section'}</span>
                   </p>
@@ -4902,11 +4902,11 @@ export function BingoDashAdmin() {
               ) : (
                 <div className="p-6 flex flex-col gap-5">
                   {/* Tabs */}
-                  <div className="flex rounded-xl overflow-hidden border border-gray-200">
+                  <div className="flex rounded-xl overflow-hidden border a-border">
                     <button
                       onClick={() => setJoinLinkTab('player')}
                       className={`flex-1 py-2.5 text-sm font-bold transition-colors ${
-                        joinLinkTab === 'player' ? 'a-surface a-text' : 'bg-white a-text-3 hover:bg-gray-50'
+                        joinLinkTab === 'player' ? 'a-surface a-text' : 'a-surface a-text-3 hover:a-surface-2'
                       }`}
                     >
                       🎯 Players
@@ -4914,7 +4914,7 @@ export function BingoDashAdmin() {
                     <button
                       onClick={() => setJoinLinkTab('observer')}
                       className={`flex-1 py-2.5 text-sm font-bold transition-colors ${
-                        joinLinkTab === 'observer' ? 'bg-blue-600 a-text' : 'bg-white a-text-3 hover:bg-gray-50'
+                        joinLinkTab === 'observer' ? 'bg-blue-600 a-text' : 'a-surface a-text-3 hover:a-surface-2'
                       }`}
                     >
                       👁 Observers
@@ -4924,11 +4924,11 @@ export function BingoDashAdmin() {
                   {/* Player tab */}
                   {joinLinkTab === 'player' && (
                     <div className="flex flex-col items-center gap-5">
-                      <div className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm">
+                      <div className="a-surface p-3 rounded-2xl border a-border shadow-sm">
                         <QRCodeSVG id="join-qr-svg" value={playerUrl} size={260} level="H" />
                       </div>
                       <div className="w-full flex items-center gap-2">
-                        <div className="flex-1 px-3 py-2.5 bg-gray-50 rounded-lg text-xs font-mono a-text-3 break-all select-all border border-gray-200">
+                        <div className="flex-1 px-3 py-2.5 a-surface-2 rounded-lg text-xs font-mono a-text-3 break-all select-all border a-border">
                           {playerUrl}
                         </div>
                         <button onClick={() => handleCopy(playerUrl)}
@@ -4952,7 +4952,7 @@ export function BingoDashAdmin() {
                         <span>👁</span>
                         <p className="text-blue-700 text-xs font-bold">Observers can browse and click everything — but cannot submit answers or complete tasks.</p>
                       </div>
-                      <div className="bg-white p-3 rounded-2xl border border-gray-100 shadow-sm">
+                      <div className="a-surface p-3 rounded-2xl border a-border shadow-sm">
                         <QRCodeSVG id="join-qr-svg-observer" value={observerUrl} size={260} level="H" />
                       </div>
                       <div className="w-full flex items-center gap-2">
