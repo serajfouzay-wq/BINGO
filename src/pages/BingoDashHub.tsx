@@ -11,10 +11,12 @@ type Tile = {
   sub: string
   primary?: boolean
   external?: boolean
+  glow?: 'teal' | 'purple'
 }
 
 const TILES: Tile[] = [
-  { to: 'https://bingo-ve2.vercel.app/bingo-dash/sample', emoji: '🎯', title: 'Player Board',  sub: 'Join a team and start playing', primary: true, external: true },
+  { to: 'https://bingo-ve2.vercel.app/bingo-dash/sample', emoji: '🎯', title: 'Player Board',  sub: 'Join a team and start playing', primary: true, external: true, glow: 'teal' },
+  { to: 'https://flag-retrieval.vercel.app/aitb', emoji: '🤖', title: 'AI Team Building', sub: 'Run the 10-activity AI game', external: true, glow: 'purple' },
   { to: '/bingo-dash/admin',      emoji: '⚙️', title: 'Admin Panel',   sub: 'Boards, cards, teams, scoring' },
   { to: '/bingo-dash/projector',  emoji: '📺', title: 'Projector',     sub: 'Live scoreboard for the room' },
   { to: '/bingo-dash/sample',     emoji: '🎬', title: 'Try a Demo',    sub: 'Play a sandbox round — nothing is saved' },
@@ -67,7 +69,7 @@ export function BingoDashHub() {
                 ${t.primary
                   ? 'border-teal-400/60 bg-teal-500/15 hover:border-teal-300 hover:bg-teal-500/25'
                   :                    'border-white/10 bg-white/[0.04] hover:border-white/25 hover:bg-white/[0.07]'}
-                ${t.to === '/bingo-dash/sample' ? 'led-glow led-glow-purple' : ''}`}
+                ${t.glow === 'purple' ? 'led-glow led-glow-purple' : t.glow ? 'led-glow' : ''}`}
             >
               <div className="flex items-center gap-4">
                 <span className="text-3xl transition-transform duration-200 group-hover:scale-110">
