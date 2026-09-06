@@ -3118,7 +3118,7 @@ export function BingoDashAdmin() {
                   href={currentSectionId ? `/bingo-dash/sample?board=${currentSectionId}` : undefined}
                   target="_blank" rel="noreferrer"
                   aria-disabled={!currentSectionId}
-                  className={`px-4 py-2 rounded-xl text-sm font-black transition-all active:scale-95 flex-shrink-0 ${currentSectionId ? 'a-text' : ''}`}
+                  className={`px-4 py-2 rounded-xl text-sm font-black transition-all active:scale-95 flex-shrink-0 led-glow ${currentSectionId ? 'a-text' : ''}`}
                   style={{
                     background: currentSectionId ? 'var(--a-brand)' : 'var(--a-surface-3)',
                     color: currentSectionId ? undefined : 'var(--a-text-2)',

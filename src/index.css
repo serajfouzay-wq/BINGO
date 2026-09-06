@@ -731,3 +731,48 @@ html.admin-dark {
   [style*="--led"] { animation: none !important;
     box-shadow: 0 0 0 1.5px var(--led), 0 0 14px -2px var(--led), var(--a-shadow-1) !important; }
 }
+
+/* ── LED glow for demo CTAs ─────────────────────────────── */
+@keyframes led-breathe {
+  0%, 100% { box-shadow: 0 0 6px var(--led), 0 0 16px var(--led), 0 0 32px var(--led-soft); }
+  50%      { box-shadow: 0 0 12px var(--led), 0 0 34px var(--led), 0 0 68px var(--led-soft); }
+}
+
+@keyframes led-sweep {
+  0%   { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+.led-glow {
+  --led: rgba(45, 212, 191, 0.85);
+  --led-soft: rgba(45, 212, 191, 0.35);
+  position: relative;
+  animation: led-breathe 2.4s ease-in-out infinite;
+  transition: transform 160ms ease;
+}
+.led-glow:hover { transform: translateY(-1px) scale(1.02); }
+
+.led-glow::after {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  padding: 2px;
+  background: linear-gradient(100deg, transparent 20%, var(--led) 45%, #ffffff 50%, var(--led) 55%, transparent 80%);
+  background-size: 200% 100%;
+  animation: led-sweep 2.8s linear infinite;
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  pointer-events: none;
+}
+
+.led-glow-purple {
+  --led: rgba(167, 139, 250, 0.85);
+  --led-soft: rgba(167, 139, 250, 0.35);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .led-glow, .led-glow::after { animation: none; }
+  .led-glow { box-shadow: 0 0 18px var(--led); }
+}

@@ -53,7 +53,8 @@ export function BingoDashHub() {
                 hover:-translate-y-1 active:scale-[0.98]
                 ${t.primary
                   ? 'border-teal-400/60 bg-teal-500/15 hover:border-teal-300 hover:bg-teal-500/25'
-                  : 'border-white/10 bg-white/[0.04] hover:border-white/25 hover:bg-white/[0.07]'}`}
+                  :                    'border-white/10 bg-white/[0.04] hover:border-white/25 hover:bg-white/[0.07]'}
+                ${t.to === '/bingo-dash/sample' ? 'led-glow led-glow-purple' : ''}`}
             >
               <div className="flex items-center gap-4">
                 <span className="text-3xl transition-transform duration-200 group-hover:scale-110">
